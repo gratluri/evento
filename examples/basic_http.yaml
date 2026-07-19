@@ -1,0 +1,10 @@
+name: basic_http
+description: Basic HTTP scenario
+config:
+  virtual_users: 10
+  duration: 1m
+scenario:
+  - name: get_homepage
+    protocol: https
+    method: GET
+    endpoint: /

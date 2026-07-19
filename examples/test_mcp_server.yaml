@@ -1,0 +1,73 @@
+name: validate_mcp_tools
+description: Evento test scenario to validate the MCP server's tools (dogfooding).
+metadata:
+  author: Evento Agent
+  tags:
+    - mcp
+    - dogfood
+config:
+  mode: realtime
+  virtual_users: 1
+  timeout: "30s"
+scenario:
+  # In a standard MCP SSE transport, the client first connects to /sse.
+  # The server sends an event with the endpoint to POST messages to (often /message or /messages?sessionId=...).
+  # For the purpose of this dogfooding scenario, we will assume /message is the endpoint.
+  
+  - name: connect_sse
+    protocol: http
+    method: GET
+    endpoint: http://localhost:8080/sse
+    async: true
+
+  - name: initialize_mcp
+    protocol: http
+    method: POST
+    endpoint: http://localhost:8080/message
+    headers:
+      Content-Type: "application/json"
+    body:
+      jsonrpc: "2.0"
+      id: 1
+      method: "initialize"
+      params:
+        protocolVersion: "2024-11-05"
+        capabilities: {}
+        clientInfo:
+          name: "evento-dogfood"
+          version: "0.1.0"
+          
+  - name: get_dsl_specification
+    protocol: http
+    method: POST
+    endpoint: http://localhost:8080/message
+    headers:
+      Content-Type: "application/json"
+    body:
+      jsonrpc: "2.0"
+      id: 2
+      method: "tools/call"
+      params:
+        name: "get_dsl_specification"
+        arguments: {}
+
+  - name: validate_dsl
+    protocol: http
+    method: POST
+    endpoint: http://localhost:8080/message
+    headers:
+      Content-Type: "application/json"
+    body:
+      jsonrpc: "2.0"
+      id: 3
+      method: "tools/call"
+      params:
+        name: "validate_dsl"
+        arguments:
+          yaml_content: |
+            name: inline_test
+            scenario:
+              - name: check
+                protocol: http
+                method: GET
+                endpoint: /

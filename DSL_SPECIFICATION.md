@@ -622,51 +622,1335 @@ When evaluating inline scripts (Section 9.1), the execution environment MUST hea
 
 ## 14. Examples
 
-### 14.1 Simple HTTP API Test
+This section provides 50 complete, runnable eDSL examples progressing from trivial single-step tests to complex, multi-feature integration scenarios. Each example corresponds to a validated parser test case and can be used directly as a template or reference implementation.
+
+---
+
+### Category 1: Basic Scenarios (Examples 1–5)
+
+*Single step, minimal configuration. The simplest possible eDSL documents.*
+
+#### Example 1 — Minimal Test Plan
+
+The absolute minimum: a test identifier and a single scenario step.
 
 ```yaml
-test: simple_api_check
+test: minimal
+scenario:
+  - name: noop
+    protocol: https
+    endpoint: /health
+```
+
+#### Example 2 — `name` Alias for `test`
+
+The `name` key is accepted as an alias for `test` for backward compatibility.
+
+```yaml
+name: aliased_test
+scenario:
+  - name: step1
+    protocol: https
+    endpoint: /
+```
+
+#### Example 3 — Single GET Request
+
+An explicit HTTP GET with a named method.
+
+```yaml
+test: simple_get
 scenario:
   - name: fetch_users
     protocol: https
     endpoint: /api/v1/users
     method: GET
-    validate:
-      - response.status == 200
-      - response.body.data.length > 0
 ```
 
-### 14.2 Complex Event-Driven E-Commerce Flow
+#### Example 4 — Single POST with Body
+
+A step with a JSON payload submitted via POST.
 
 ```yaml
-test: checkout_flow
+test: post_test
+scenario:
+  - name: create_user
+    protocol: https
+    endpoint: /api/users
+    method: POST
+    body:
+      username: "testuser"
+      email: "test@example.com"
+```
+
+#### Example 5 — Step with Description
+
+Steps MAY carry a human-readable `description` for documentation purposes (§1.2).
+
+```yaml
+test: described_steps
+scenario:
+  - name: health_check
+    description: "Verifies the API is alive and responding"
+    protocol: https
+    endpoint: /health
+    method: GET
+```
+
+---
+
+### Category 2: Multi-Step Linear Flows (Examples 6–10)
+
+*Sequential step execution, headers, complex bodies, and template interpolation.*
+
+#### Example 6 — Two Sequential Steps
+
+Steps listed in an array are executed in order (§5.1).
+
+```yaml
+test: two_steps
+scenario:
+  - name: step_one
+    protocol: https
+    endpoint: /first
+  - name: step_two
+    protocol: https
+    endpoint: /second
+```
+
+#### Example 7 — Steps with HTTP Headers
+
+Arbitrary headers are passed as a dictionary (§7.1).
+
+```yaml
+test: headers_test
+scenario:
+  - name: authenticated_call
+    protocol: https
+    endpoint: /api/protected
+    method: GET
+    headers:
+      Authorization: "Bearer token123"
+      Accept: "application/json"
+      X-Request-ID: "req-001"
+```
+
+#### Example 8 — Five-Step Pipeline
+
+A realistic multi-step flow exercising login, profile, settings, ordering, and logout.
+
+```yaml
+test: pipeline
+scenario:
+  - name: login
+    protocol: https
+    endpoint: /api/login
+    method: POST
+  - name: get_profile
+    protocol: https
+    endpoint: /api/profile
+    method: GET
+  - name: update_settings
+    protocol: https
+    endpoint: /api/settings
+    method: PUT
+  - name: submit_order
+    protocol: https
+    endpoint: /api/orders
+    method: POST
+  - name: logout
+    protocol: https
+    endpoint: /api/logout
+    method: POST
+```
+
+#### Example 9 — Step with Complex Nested Body
+
+Deeply nested JSON payloads (objects, arrays, nested objects) are fully supported.
+
+```yaml
+test: complex_body
+scenario:
+  - name: create_order
+    protocol: https
+    endpoint: /api/orders
+    method: POST
+    body:
+      customer:
+        id: "c-123"
+        name: "John Doe"
+      items:
+        - productId: "p-001"
+          quantity: 2
+          price: 29.99
+        - productId: "p-002"
+          quantity: 1
+          price: 49.99
+      shipping:
+        method: "express"
+        address:
+          street: "123 Main St"
+          city: "Springfield"
+```
+
+#### Example 10 — Interpolation Templates and Extraction
+
+Demonstrates `$faker`, `$context` interpolation (§6.3), and variable extraction (§6.2).
+
+```yaml
+test: interpolation
+scenario:
+  - name: login
+    protocol: https
+    endpoint: /api/login
+    method: POST
+    body:
+      username: "${$faker.username()}"
+      password: "test_password_123"
+    extract:
+      authToken: response.body.token
+  - name: get_orders
+    protocol: https
+    endpoint: /api/orders
+    method: GET
+    headers:
+      Authorization: "Bearer ${$context.authToken}"
+```
+
+---
+
+### Category 3: Configuration Variations (Examples 11–15)
+
+*Execution modes, virtual users, ramp-up strategies, and timeouts (§3).*
+
+#### Example 11 — Realtime Mode with Virtual Users
+
+Standard load test: 100 VUs for 5 minutes (§3.1, §3.2).
+
+```yaml
+test: load_test
+config:
+  mode: realtime
+  virtual_users: 100
+  duration: 5m
+scenario:
+  - name: hit_api
+    protocol: https
+    endpoint: /api/stress
+```
+
+#### Example 12 — Replay Mode
+
+Replay captured traffic at 2× speed (§3.1).
+
+```yaml
+test: replay_test
+config:
+  mode: replay
+  source: /var/logs/traffic.log
+  speed: 2.0
+scenario:
+  - name: replay_step
+    protocol: https
+    endpoint: /api/replay
+```
+
+#### Example 13 — Scheduled Mode
+
+CRON-driven execution: every 6 hours (§3.1).
+
+```yaml
+test: scheduled_test
+config:
+  mode: scheduled
+  cron: "0 */6 * * *"
+scenario:
+  - name: periodic_check
+    protocol: https
+    endpoint: /health
+```
+
+#### Example 14 — Simple Duration Ramp-Up
+
+When `ramp_up` is a string, a `linear` strategy is implied over that duration (§3.2).
+
+```yaml
+test: ramp_simple
+config:
+  virtual_users: 50
+  ramp_up: "30s"
+  duration: 5m
+scenario:
+  - name: load_step
+    protocol: https
+    endpoint: /api/load
+```
+
+#### Example 15 — Structured Step Ramp-Up with Timeouts
+
+Explicit `step` strategy with global and per-step timeouts (§3.2, §3.3).
+
+```yaml
+test: ramp_structured
+config:
+  virtual_users: 100
+  duration: 5m
+  ramp_up:
+    strategy: step
+    duration: 30s
+    steps: 5
+  timeout: 10m
+  step_timeout: 15s
+scenario:
+  - name: load_step
+    protocol: https
+    endpoint: /api/load
+```
+
+---
+
+### Category 4: Data Sources (Examples 16–20)
+
+*Database feeds, CSV/JSON files, faker generation, and referential integrity (§4).*
+
+#### Example 16 — Database Data Source
+
+Fetch rows from a live database with random sampling and caching (§4.2).
+
+```yaml
+test: db_source
 data_sources:
   - name: customers
     source: database
-    connection: ${DB_URI}
-    query: "SELECT id FROM test_customers"
+    connection: "postgres://prod-readonly/main"
+    query: "SELECT id, email, tier FROM customers WHERE active = true"
+    sampling: random
+    cache: true
+scenario:
+  - name: use_data
+    protocol: https
+    endpoint: /api/test
+```
 
+#### Example 17 — CSV Data Source
+
+Read records sequentially from a CSV file (§4.2).
+
+```yaml
+test: csv_source
+data_sources:
+  - name: products
+    source: csv
+    path: ./data/products.csv
+    sampling: sequential
+scenario:
+  - name: use_products
+    protocol: https
+    endpoint: /api/products
+```
+
+#### Example 18 — JSON Data Source
+
+Read records from a JSON file with shuffle sampling (§4.2).
+
+```yaml
+test: json_source
+data_sources:
+  - name: configs
+    source: json
+    path: ./data/configs.json
+    sampling: shuffle
+scenario:
+  - name: use_configs
+    protocol: https
+    endpoint: /api/configs
+```
+
+#### Example 19 — Faker with Referential Integrity
+
+Synthetic data constrained by a live data source to maintain referential integrity (§4.3).
+
+```yaml
+test: faker_source
+data_sources:
+  - name: customers
+    source: database
+    connection: "postgres://readonly/main"
+    query: "SELECT id, email FROM customers"
+  - name: fake_orders
+    generator: faker
+    fields:
+      orderId: uuid
+      customerEmail: "from_source(customers.email)"
+      amount: "decimal(10, 1000)"
+scenario:
+  - name: use_fake
+    protocol: https
+    endpoint: /api/orders
+```
+
+#### Example 20 — Multiple Data Sources
+
+Combining database, CSV, and JSON feeds in a single test (§4.2).
+
+```yaml
+test: multi_source
+data_sources:
+  - name: users
+    source: database
+    connection: "postgres://db/users"
+    query: "SELECT * FROM users LIMIT 100"
+  - name: products
+    source: csv
+    path: ./products.csv
+  - name: regions
+    source: json
+    path: ./regions.json
+scenario:
+  - name: test_step
+    protocol: https
+    endpoint: /api/test
+```
+
+---
+
+### Category 5: Branching and Validation (Examples 21–25)
+
+*Conditional execution, chained branching, and assertion-driven flow control (§5.2, §8).*
+
+#### Example 21 — Simple Validation
+
+A single assertion on response status (§8.1).
+
+```yaml
+test: validation_test
+scenario:
+  - name: check_api
+    protocol: https
+    endpoint: /api/status
+    validate:
+      - "response.status == 200"
+```
+
+#### Example 22 — Multiple Validations
+
+Multiple assertion expressions on a single step (§8.1).
+
+```yaml
+test: multi_validation
+scenario:
+  - name: api_call
+    protocol: https
+    endpoint: /api/data
+    validate:
+      - "response.status == 200"
+      - "response.time < 500ms"
+      - "header['Content-Type'] exists"
+```
+
+#### Example 23 — Conditional Branching
+
+`on_success` / `on_failure` directives route the execution graph based on validation results (§5.2).
+
+```yaml
+test: branching
+scenario:
+  - name: validate_order
+    validate:
+      - "context.order.amount > 0"
+    on_success: charge_payment
+    on_failure: reject_order
+  - name: charge_payment
+    protocol: https
+    endpoint: /api/charge
+    method: POST
+  - name: reject_order
+    protocol: https
+    endpoint: /api/reject
+    method: POST
+```
+
+#### Example 24 — Chained Branching
+
+Multi-level decision trees with cascading branch conditions.
+
+```yaml
+test: chained_branching
+scenario:
+  - name: check_user_tier
+    validate:
+      - "context.user.tier == 'premium'"
+    on_success: premium_flow
+    on_failure: standard_flow
+  - name: premium_flow
+    validate:
+      - "context.user.balance > 1000"
+    on_success: vip_processing
+    on_failure: standard_premium
+  - name: vip_processing
+    protocol: https
+    endpoint: /api/vip
+  - name: standard_premium
+    protocol: https
+    endpoint: /api/premium
+  - name: standard_flow
+    protocol: https
+    endpoint: /api/standard
+```
+
+#### Example 25 — Branching with Extract and Validate
+
+Combining extraction (§6.2) with conditional branching for data-driven flow control.
+
+```yaml
+test: extract_and_branch
 scenario:
   - name: place_order
     protocol: https
     endpoint: /api/orders
     method: POST
     body:
-      customerId: "${$data.customers.id}"
-      amount: "${$random.decimal(10, 100)}"
+      amount: 150.00
     extract:
       orderId: response.body.orderId
+      orderStatus: response.body.status
+  - name: check_status
+    validate:
+      - "context.orderStatus == 'approved'"
+    on_success: confirm_order
+    on_failure: flag_for_review
+  - name: confirm_order
+    protocol: https
+    endpoint: /api/orders/confirm
+    method: POST
+  - name: flag_for_review
+    protocol: https
+    endpoint: /api/orders/review
+    method: POST
+```
 
-  - name: verify_cdc_event
+---
+
+### Category 6: Parallel Execution (Examples 26–30)
+
+*Concurrent branches, mixed linear/parallel flows, and nested parallelism (§5.3).*
+
+#### Example 26 — Simple Parallel (Two Branches)
+
+Two independent branches execute concurrently (§5.3).
+
+```yaml
+test: parallel_basic
+scenario:
+  - name: parallel_step
+    parallel:
+      - - name: track_analytics
+          protocol: https
+          endpoint: /api/analytics
+      - - name: notify_warehouse
+          protocol: https
+          endpoint: /api/warehouse
+```
+
+#### Example 27 — Parallel Branches with Multiple Steps
+
+Each branch can contain its own sequential subgraph.
+
+```yaml
+test: parallel_multi_step
+scenario:
+  - name: parallel_ops
+    parallel:
+      - - name: branch1_step1
+          protocol: https
+          endpoint: /api/b1/s1
+        - name: branch1_step2
+          protocol: https
+          endpoint: /api/b1/s2
+      - - name: branch2_step1
+          protocol: https
+          endpoint: /api/b2/s1
+        - name: branch2_step2
+          protocol: https
+          endpoint: /api/b2/s2
+        - name: branch2_step3
+          protocol: https
+          endpoint: /api/b2/s3
+```
+
+#### Example 28 — Three Parallel Branches
+
+Fan-out to three concurrent notification channels.
+
+```yaml
+test: parallel_three
+scenario:
+  - name: triple_parallel
+    parallel:
+      - - name: send_email
+          protocol: https
+          endpoint: /api/email
+      - - name: send_sms
+          protocol: https
+          endpoint: /api/sms
+      - - name: send_push
+          protocol: https
+          endpoint: /api/push
+```
+
+#### Example 29 — Linear Steps Before and After Parallel
+
+Parallel blocks can be embedded anywhere in a linear flow. Steps before and after execute sequentially.
+
+```yaml
+test: linear_then_parallel
+scenario:
+  - name: authenticate
+    protocol: https
+    endpoint: /api/login
+    method: POST
+  - name: parallel_ops
+    parallel:
+      - - name: fetch_profile
+          protocol: https
+          endpoint: /api/profile
+      - - name: fetch_settings
+          protocol: https
+          endpoint: /api/settings
+  - name: render_dashboard
+    protocol: https
+    endpoint: /api/dashboard
+```
+
+#### Example 30 — Nested Parallel
+
+Parallel blocks within parallel branches for deeply concurrent execution graphs.
+
+```yaml
+test: nested_parallel
+scenario:
+  - name: outer_parallel
+    parallel:
+      - - name: inner_parallel_a
+          parallel:
+            - - name: deep_a1
+                protocol: https
+                endpoint: /deep/a1
+            - - name: deep_a2
+                protocol: https
+                endpoint: /deep/a2
+      - - name: branch_b
+          protocol: https
+          endpoint: /branch/b
+```
+
+---
+
+### Category 7: Loops and Iterations (Examples 31–35)
+
+*Count-based loops, collection iteration, multi-step loop bodies, and nesting (§5.4).*
+
+#### Example 31 — Simple Count Loop
+
+Execute a step exactly N times (§5.4).
+
+```yaml
+test: count_loop
+scenario:
+  - name: repeat_call
+    loop:
+      count: 5
+    do:
+      - name: hit_api
+        protocol: https
+        endpoint: /api/ping
+```
+
+#### Example 32 — Collection Loop
+
+Iterate over a context collection using `over`/`from` (§5.4).
+
+```yaml
+test: collection_loop
+scenario:
+  - name: add_to_cart
+    loop:
+      over: selected_product
+      from: "${$context.products}"
+    do:
+      - name: add_item
+        protocol: https
+        endpoint: /api/cart/items
+        method: POST
+        body:
+          productId: "${$selected_product.id}"
+```
+
+#### Example 33 — Combined Count and Collection Loop
+
+Both `count` and `over`/`from` can be used together — execute at most N items from a collection (§5.4).
+
+```yaml
+test: hybrid_loop
+scenario:
+  - name: process_items
+    loop:
+      count: "${$random.int(1, 5)}"
+      over: item
+      from: "${$context.items}"
+    do:
+      - name: process
+        protocol: https
+        endpoint: /api/process
+        method: POST
+        body:
+          itemId: "${$item.id}"
+```
+
+#### Example 34 — Loop with Multi-Step Body
+
+The `do` block can contain multiple sequential steps forming a complete subgraph.
+
+```yaml
+test: loop_subgraph
+scenario:
+  - name: order_loop
+    loop:
+      count: 3
+    do:
+      - name: create_order
+        protocol: https
+        endpoint: /api/orders
+        method: POST
+      - name: verify_order
+        protocol: https
+        endpoint: /api/orders/verify
+        method: GET
+      - name: confirm_order
+        protocol: https
+        endpoint: /api/orders/confirm
+        method: POST
+```
+
+#### Example 35 — Nested Loops
+
+Loops can be nested: an outer loop containing an inner loop for matrix-style iteration.
+
+```yaml
+test: nested_loops
+scenario:
+  - name: outer_loop
+    loop:
+      count: 3
+    do:
+      - name: inner_loop
+        loop:
+          count: 2
+        do:
+          - name: deep_call
+            protocol: https
+            endpoint: /api/deep
+```
+
+---
+
+### Category 8: Context and Extraction (Examples 36–40)
+
+*Variable extraction, chained context propagation, metrics tracking, and interpolation (§6, §10.2).*
+
+#### Example 36 — Basic Extract
+
+Extract two variables from a login response into the context (§6.2).
+
+```yaml
+test: extract_test
+scenario:
+  - name: login
+    protocol: https
+    endpoint: /api/login
+    method: POST
+    extract:
+      authToken: response.body.token
+      userId: response.body.user.id
+```
+
+#### Example 37 — Chained Extraction Across Steps
+
+Variables extracted in one step are injected into subsequent steps via `$context` (§6.1, §6.3).
+
+```yaml
+test: chained_extract
+scenario:
+  - name: login
+    protocol: https
+    endpoint: /api/login
+    method: POST
+    body:
+      username: "admin"
+    extract:
+      token: response.body.token
+  - name: get_orders
+    protocol: https
+    endpoint: /api/orders
+    method: GET
+    headers:
+      Authorization: "Bearer ${$context.token}"
+    extract:
+      firstOrderId: "response.body.orders[0].id"
+  - name: get_order_detail
+    protocol: https
+    endpoint: "/api/orders/${$context.firstOrderId}"
+    method: GET
+    extract:
+      orderStatus: response.body.status
+```
+
+#### Example 38 — Extract with Validation
+
+Extraction and validation can coexist on the same step.
+
+```yaml
+test: extract_validate
+scenario:
+  - name: create_entity
+    protocol: https
+    endpoint: /api/entities
+    method: POST
+    body:
+      type: "widget"
+    extract:
+      entityId: response.body.id
+      createdAt: response.body.createdAt
+    validate:
+      - "response.status == 201"
+      - "response.body.id exists"
+```
+
+#### Example 39 — Custom Business Metric Tracking
+
+Track a custom metric with dimensions for aggregated analysis (§10.2).
+
+```yaml
+test: metric_tracking
+scenario:
+  - name: process_payment
+    protocol: https
+    endpoint: /api/payments
+    method: POST
+    track_metric:
+      name: payment_approval_rate
+      value: "json.parse(response.body).status == 'approved'"
+      dimensions:
+        payment_method: request.body.method
+        customer_tier: context.customer.tier
+```
+
+#### Example 40 — Context Interpolation in Body and Headers
+
+Template expressions in both headers and body demonstrate full context propagation (§6.3).
+
+```yaml
+test: interpolation_body
+scenario:
+  - name: setup
+    protocol: https
+    endpoint: /api/setup
+    extract:
+      sessionId: response.body.sessionId
+      config: response.body.config
+  - name: use_context
+    protocol: https
+    endpoint: /api/action
+    method: POST
+    headers:
+      X-Session: "${$context.sessionId}"
+    body:
+      action: "process"
+      configRef: "${$context.config.id}"
+      timestamp: "${$faker.iso8601()}"
+```
+
+---
+
+### Category 9: Retries and Synchronization (Examples 41–45)
+
+*Retry strategies, wait barriers, fire-and-forget steps, and temporal assertions (§5.5, §5.6, §8.3).*
+
+#### Example 41 — Simple Retry (Exponential Backoff)
+
+Retry a flaky endpoint up to 3 times with exponential backoff starting at 2 seconds (§5.6).
+
+```yaml
+test: retry_test
+scenario:
+  - name: flaky_call
+    protocol: https
+    endpoint: /api/flaky
+    retry:
+      max_attempts: 3
+      backoff: exponential
+      delay: 2s
+```
+
+#### Example 42 — Retry with Linear Backoff and Validation
+
+Combine retry logic with validation — retries trigger only on assertion failures (§5.6, §8.1).
+
+```yaml
+test: retry_linear
+scenario:
+  - name: call_with_retry
+    protocol: https
+    endpoint: /api/unreliable
+    retry:
+      max_attempts: 5
+      backoff: linear
+      delay: 1s
+    validate:
+      - "response.status == 200"
+```
+
+#### Example 43 — Wait-For Synchronization Barrier
+
+Block execution until named parallel tasks complete. Includes timeout-based branching (§5.5).
+
+```yaml
+test: sync_test
+scenario:
+  - name: parallel_work
+    parallel:
+      - - name: task_a
+          protocol: https
+          endpoint: /api/task_a
+      - - name: task_b
+          protocol: https
+          endpoint: /api/task_b
+  - name: aggregate
+    protocol: https
+    endpoint: /api/aggregate
+    wait_for:
+      - task_a
+      - task_b
+    timeout: 30s
+    on_timeout: handle_timeout
+  - name: handle_timeout
+    protocol: https
+    endpoint: /api/timeout_handler
+```
+
+#### Example 44 — Async Fire-and-Forget
+
+Steps marked `async: true` do not block the execution graph (§5.5).
+
+```yaml
+test: async_test
+scenario:
+  - name: main_call
+    protocol: https
+    endpoint: /api/main
+    method: POST
+  - name: send_telemetry
+    protocol: https
+    endpoint: /api/telemetry
+    async: true
+  - name: continue_flow
+    protocol: https
+    endpoint: /api/next
+```
+
+#### Example 45 — Temporal Assertions (`within`)
+
+Both simple duration and structured `since`-linked temporal assertions (§8.3). Useful for CDC verification.
+
+```yaml
+test: within_test
+scenario:
+  - name: place_order
+    protocol: https
+    endpoint: /api/orders
+    method: POST
+  - name: check_cdc_simple
     protocol: kafka
     topic: orders.cdc
     mode: observe
     expect:
       message.operation: INSERT
-      message.after.id: "${$context.orderId}"
+    within: 5s
+  - name: check_cdc_structured
+    protocol: kafka
+    topic: orders.cdc
+    mode: observe
+    expect:
+      message.operation: UPDATE
     within:
-      duration: 3s
+      duration: 5s
       since: place_order
+```
+
+---
+
+### Category 10: Complex Integration Scenarios (Examples 46–50)
+
+*Full end-to-end flows combining multiple DSL features, deep nesting, modules, scripting, and the complete feature set.*
+
+#### Example 46 — Full E-Commerce Checkout Flow
+
+Combines: metadata, config (step ramp-up), data sources, extraction, loops, parallel branches, retries, validation, and metric outputs.
+
+```yaml
+test: ecommerce_checkout
+description: "End-to-end e-commerce checkout with CDC verification"
+metadata:
+  author: "Evento Agent"
+  created: "2026-07-19T00:00:00Z"
+  tags:
+    - e2e
+    - checkout
+config:
+  mode: realtime
+  virtual_users: 10
+  duration: 5m
+  ramp_up:
+    strategy: step
+    duration: 30s
+    steps: 5
+  timeout: 10m
+data_sources:
+  - name: customers
+    source: database
+    connection: "${DB_URI}"
+    query: "SELECT id FROM test_customers"
+scenario:
+  - name: login
+    description: "Authenticate user and get JWT"
+    protocol: https
+    endpoint: /api/login
+    method: POST
+    body:
+      username: "${$faker.username()}"
+      password: "test123"
+    extract:
+      authToken: response.body.token
+      userId: response.body.userId
+    validate:
+      - "response.status == 200"
+  - name: browse_products
+    protocol: https
+    endpoint: /api/products
+    method: GET
+    headers:
+      Authorization: "Bearer ${$context.authToken}"
+    extract:
+      products: response.body.items
+  - name: add_items_loop
+    loop:
+      count: 3
+      over: product
+      from: "${$context.products}"
+    do:
+      - name: add_to_cart
+        protocol: https
+        endpoint: /api/cart/items
+        method: POST
+        headers:
+          Authorization: "Bearer ${$context.authToken}"
+        body:
+          productId: "${$product.id}"
+          quantity: 1
+  - name: place_order
+    protocol: https
+    endpoint: /api/orders
+    method: POST
+    headers:
+      Authorization: "Bearer ${$context.authToken}"
+    extract:
+      orderId: response.body.orderId
+    validate:
+      - "response.status == 201"
+    retry:
+      max_attempts: 2
+      backoff: exponential
+      delay: 1s
+  - name: verify_notifications
+    parallel:
+      - - name: check_email
+          protocol: https
+          endpoint: /api/notifications/email
+          validate:
+            - "response.status == 200"
+      - - name: check_sms
+          protocol: https
+          endpoint: /api/notifications/sms
+          validate:
+            - "response.status == 200"
+outputs:
+  - format: prometheus
+    endpoint: "http://prometheus:9090"
+  - format: ai_insights
+    file: "results/insights_${$timestamp}.json"
+```
+
+#### Example 47 — Six-Level Deep Nesting
+
+Stress-tests the parser with deeply nested parallel and loop constructs: parallel → loop → parallel → loop → parallel → leaf steps.
+
+```yaml
+test: deep_nesting
+description: "6 levels of depth testing parser robustness"
+scenario:
+  - name: level1
+    parallel:
+      - - name: level2_branch_a
+          loop:
+            count: 2
+          do:
+            - name: level3_loop_body
+              parallel:
+                - - name: level4_parallel_a
+                    loop:
+                      count: 1
+                    do:
+                      - name: level5_inner
+                        parallel:
+                          - - name: level6_leaf_a
+                              protocol: https
+                              endpoint: /api/deep/a
+                              validate:
+                                - "response.status == 200"
+                          - - name: level6_leaf_b
+                              protocol: https
+                              endpoint: /api/deep/b
+                - - name: level4_parallel_b
+                    protocol: https
+                    endpoint: /api/level4b
+      - - name: level2_branch_b
+          protocol: https
+          endpoint: /api/level2b
+```
+
+#### Example 48 — Module Use and Custom Functions
+
+Demonstrates `imports`, `functions`, `use_module`, `with`/`outputs_to`, and `transform` pipelines (§9.2, §11.1).
+
+```yaml
+test: module_test
+imports:
+  - modules/auth_flow.yaml
+  - modules/payment.yaml
+functions:
+  - name: calculate_tax
+    language: rust
+    source: ./functions/tax.rs
+  - name: format_address
+    language: python
+    source: ./functions/address.py
+scenario:
+  - name: authenticate
+    use_module: authenticate_user
+    with:
+      username: "${$faker.username()}"
+      password: "test_password_123"
+    outputs_to: auth_context
+  - name: process_order
+    protocol: https
+    endpoint: /api/orders
+    method: POST
+    transform:
+      - input: "${$context.order.amount}"
+        function: calculate_tax
+        params:
+          region: "${$context.customer.region}"
+        output_to: tax_amount
+```
+
+#### Example 49 — Scripting, Inheritance, and Global Validation
+
+Combines `base`/`extends` inheritance (§11.2), inline scripting with `runtime` (§9.1), and global `validation` business rules (§8.2).
+
+```yaml
+test: scripted_test
+base: api_test_base.yaml
+extends: base
+config:
+  timeout: 30s
+scenario:
+  - name: complex_decision
+    script: |
+      if context.user.tier == "premium":
+          return "kafka", "premium-topic"
+      else:
+          return "https", "/standard-endpoint"
+    runtime: python
+  - name: process_result
+    protocol: https
+    endpoint: /api/process
+    method: POST
+validation:
+  business_rules:
+    - name: order_completion_rate
+      threshold: 0.95
+      actual: "${$metrics.completed_orders / metrics.total_orders}"
+    - name: avg_latency
+      threshold: 500.0
+      actual: "${$metrics.avg_latency_ms}"
+```
+
+#### Example 50 — Mega Scenario (All Features)
+
+The ultimate integration test exercising every eDSL feature simultaneously: metadata, imports, config (structured ramp-up, timeouts), three data sources (database, CSV, faker with referential integrity), custom functions, module invocation, extraction, validation, loops with retries, parallel branches with async, transforms, custom metric tracking, conditional branching, global business rules, and multi-format outputs.
+
+```yaml
+test: mega_integration
+description: "Comprehensive test exercising every DSL feature"
+metadata:
+  author: "Evento CI"
+  created: "2026-07-19T20:00:00Z"
+  tags:
+    - integration
+    - full
+    - ci
+imports:
+  - modules/auth.yaml
+config:
+  mode: realtime
+  virtual_users: 50
+  duration: 10m
+  ramp_up:
+    strategy: step
+    duration: 1m
+    steps: 10
+  timeout: 15m
+  step_timeout: 30s
+data_sources:
+  - name: users
+    source: database
+    connection: "${DB_URI}"
+    query: "SELECT id, email FROM users WHERE test = true"
+    sampling: random
+    cache: true
+  - name: products
+    source: csv
+    path: ./data/products.csv
+    sampling: sequential
+  - name: fake_orders
+    generator: faker
+    fields:
+      orderId: uuid
+      customerEmail: "from_source(users.email)"
+      amount: "decimal(10, 1000)"
+functions:
+  - name: calc_tax
+    language: rust
+    source: ./functions/tax.rs
+scenario:
+  - name: auth
+    use_module: authenticate
+    with:
+      username: "${$faker.username()}"
+      password: "${$faker.password()}"
+    outputs_to: auth
+  - name: browse
+    protocol: https
+    endpoint: /api/products
+    method: GET
+    headers:
+      Authorization: "Bearer ${$context.auth.token}"
+    extract:
+      productList: response.body.items
+    validate:
+      - "response.status == 200"
+      - "response.body.items.length > 0"
+  - name: shopping_loop
+    description: "Add multiple products to cart"
+    loop:
+      count: "${$random.int(1, 5)}"
+      over: product
+      from: "${$context.productList}"
+    do:
+      - name: add_to_cart
+        protocol: https
+        endpoint: /api/cart
+        method: POST
+        headers:
+          Authorization: "Bearer ${$context.auth.token}"
+        body:
+          productId: "${$product.id}"
+          quantity: 1
+        validate:
+          - "response.status == 200"
+        retry:
+          max_attempts: 2
+          backoff: constant
+          delay: 500ms
+  - name: checkout
+    protocol: https
+    endpoint: /api/checkout
+    method: POST
+    headers:
+      Authorization: "Bearer ${$context.auth.token}"
+    extract:
+      orderId: response.body.orderId
+      totalAmount: response.body.total
+    validate:
+      - "response.status == 201"
+    transform:
+      - input: "${$context.totalAmount}"
+        function: calc_tax
+        params:
+          region: "${$context.auth.region}"
+        output_to: taxAmount
+    track_metric:
+      name: checkout_success_rate
+      value: "response.status == 201"
+      dimensions:
+        region: "${$context.auth.region}"
+  - name: post_checkout_verification
+    parallel:
+      - - name: verify_email
+          protocol: https
+          endpoint: /api/verify/email
+          validate:
+            - "response.status == 200"
+          timeout: 10s
+      - - name: verify_inventory
+          protocol: https
+          endpoint: /api/verify/inventory
+          validate:
+            - "response.status == 200"
+      - - name: send_analytics
+          protocol: https
+          endpoint: /api/analytics
+          async: true
+  - name: conditional_refund
+    validate:
+      - "context.totalAmount > 500"
+    on_success: process_vip_refund
+    on_failure: standard_completion
+  - name: process_vip_refund
+    protocol: https
+    endpoint: /api/refund/vip
+    method: POST
+    retry:
+      max_attempts: 3
+      backoff: exponential
+      delay: 2s
+  - name: standard_completion
+    protocol: https
+    endpoint: /api/complete
+    method: POST
+validation:
+  business_rules:
+    - name: checkout_rate
+      threshold: 0.90
+      actual: "${$metrics.successful_checkouts / metrics.total_attempts}"
+    - name: latency_p99
+      threshold: 2000.0
+      actual: "${$metrics.checkout_p99_ms}"
+outputs:
+  - format: prometheus
+    endpoint: "http://prometheus:9090"
+  - format: ai_insights
+    file: "results/mega_${$timestamp}.json"
 ```
 
 ---

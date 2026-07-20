@@ -26,7 +26,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 * **Test:** The top-level definition of a validation suite, encompassing configurations, data sources, and the scenario graph.
 * **Scenario:** A collection of steps (nodes) defining the execution flow.
-* **Step:** A single unit of work within a scenario (e.g., an HTTP request, a Kafka message, a database query, or a script execution).
+* **Step:** A single unit of work within a scenario (e.g., an HTTP request, a Kafka message, a database query, or a script execution). Each step MUST have a `name` and MAY include a `description` for documentation purposes.
 * **Manager:** The central orchestrator node responsible for parsing eDSL, managing state, and distributing work.
 * **Worker:** A distributed execution node that runs steps assigned by the Manager.
 * **Context:** A localized state dictionary containing extracted variables, test data, and outputs from previous steps, securely passed between the Manager and Workers.

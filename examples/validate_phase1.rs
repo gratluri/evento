@@ -1,11 +1,11 @@
 use evento::engine::config::StorageConfig;
-use evento::engine::storage::duckdb_store::DuckDbStore;
 use evento::engine::storage::sled_store::SledStore;
+use evento::admin::server::start_admin_server;
 use anyhow::Result;
-use uuid::Uuid;
 
-fn main() -> Result<()> {
-    println!("=== Phase 1 Storage Validation ===");
+#[tokio::main]
+async fn main() -> Result<()> {
+    println!("=== Phase 1 & 1.5 Validation ===");
     
     // 1. Initialize configuration (using a local test directory)
     let mut config = StorageConfig::default();
@@ -15,7 +15,6 @@ fn main() -> Result<()> {
     
     println!("\n[1] Configuration Paths:");
     println!("  Data Dir:   {:?}", config.data_dir);
-    println!("  DuckDB:     {:?}", config.duckdb_path());
     println!("  Sled:       {:?}", config.sled_dir());
 
     // 2. Initialize Sled (Operational Hot Path)
@@ -37,20 +36,11 @@ fn main() -> Result<()> {
     let retrieved_ctx = sled.get_vu_context(run_id, 42, "auth_token")?.unwrap_or_else(|| "None".to_string());
     println!("  Got VU Context  -> {}", retrieved_ctx);
 
-
-    // 3. Initialize DuckDB (Analytical Cold Path)
-    println!("\n[3] Initializing DuckDbStore...");
-    let duckdb = DuckDbStore::new(&config)?;
-    
-    let db_run_id = Uuid::new_v4();
-    duckdb.insert_run(db_run_id, "my_checkout_test", "completed")?;
-    println!("  Inserted Test Run -> OK (UUID: {})", db_run_id);
-    
-    duckdb.insert_metric(db_run_id, "login", "latency_ms", 125.5)?;
-    duckdb.insert_metric(db_run_id, "add_to_cart", "latency_ms", 45.0)?;
-    println!("  Inserted Metrics  -> OK");
-
     println!("\n=== Validation Complete ===");
-    println!("You can inspect the generated files at {:?}", config.data_dir);
+    println!("Starting Admin Dashboard on http://0.0.0.0:8080 ...");
+    
+    // Spawn Admin Web Server on port 8080
+    start_admin_server(8080, config).await?;
+
     Ok(())
 }

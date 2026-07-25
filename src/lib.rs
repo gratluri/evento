@@ -4,3 +4,4 @@ pub mod engine;
 pub mod mcp;
 pub mod metrics;
 pub mod protocols;
+pub mod admin;

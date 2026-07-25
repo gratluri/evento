@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evento Admin Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --glass-bg: rgba(30, 41, 59, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --accent-green: #10b981;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: radial-gradient(circle at top left, #1e1b4b, #0f172a 40%);
+        }
+
+        header {
+            width: 100%;
+            padding: 2rem 0;
+            text-align: center;
+            border-bottom: 1px solid var(--glass-border);
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(12px);
+            margin-bottom: 3rem;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -1px;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            width: 90%;
+            max-width: 1200px;
+        }
+
+        .card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 2rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--accent-green);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 12px var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        .metric {
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0;
+            color: #e2e8f0;
+        }
+
+        .metric-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Evento Admin</h1>
+    </header>
+
+    <div class="dashboard">
+        <!-- Evento Core -->
+        <div class="card" id="card-evento">
+            <div class="card-header">
+                <span class="card-title">Evento Core</span>
+                <div class="status-badge">
+                    <div class="status-dot"></div>
+                    <span id="evento-status">Loading...</span>
+                </div>
+            </div>
+            <p class="metric" id="uptime">0s</p>
+            <p class="metric-label">Uptime</p>
+        </div>
+
+        <!-- Sled Store -->
+        <div class="card" id="card-sled">
+            <div class="card-header">
+                <span class="card-title">Sled (Hot Store)</span>
+                <div class="status-badge">
+                    <div class="status-dot"></div>
+                    <span id="sled-status">Loading...</span>
+                </div>
+            </div>
+            <p class="metric">Operational</p>
+            <p class="metric-label">Key-Value Engine</p>
+        </div>
+
+        <!-- Postgres Store -->
+        <div class="card" id="card-postgres">
+            <div class="card-header">
+                <span class="card-title">PostgreSQL (Cold Store)</span>
+                <div class="status-badge">
+                    <div class="status-dot"></div>
+                    <span id="postgres-status">Loading...</span>
+                </div>
+            </div>
+            <p class="metric">Operational</p>
+            <p class="metric-label">Analytics Engine</p>
+        </div>
+
+        <!-- MCP Server -->
+        <div class="card" id="card-mcp">
+            <div class="card-header">
+                <span class="card-title">MCP Server</span>
+                <div class="status-badge">
+                    <div class="status-dot"></div>
+                    <span id="mcp-status">Loading...</span>
+                </div>
+            </div>
+            <p class="metric">SSE Active</p>
+            <p class="metric-label">Model Context Protocol</p>
+        </div>
+    </div>
+
+    <script>
+        function updateCardState(idPrefix, statusText) {
+            const statusEl = document.getElementById(idPrefix + '-status');
+            const cardEl = document.getElementById('card-' + idPrefix);
+            const badgeEl = statusEl.parentElement;
+            const dotEl = statusEl.previousElementSibling;
+            
+            statusEl.innerText = statusText;
+            
+            if (statusText === 'Green' || statusText === 'Active') {
+                badgeEl.style.color = 'var(--accent-green)';
+                badgeEl.style.background = 'rgba(16, 185, 129, 0.1)';
+                dotEl.style.backgroundColor = 'var(--accent-green)';
+                dotEl.style.animation = 'pulse 2s infinite';
+                cardEl.style.borderColor = 'var(--glass-border)';
+            } else {
+                badgeEl.style.color = '#ef4444'; // Red
+                badgeEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                dotEl.style.backgroundColor = '#ef4444';
+                dotEl.style.animation = 'none';
+                cardEl.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+            }
+        }
+
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                if (!response.ok) throw new Error("Network response was not ok");
+                
+                const data = await response.json();
+                
+                updateCardState('evento', data.evento_core);
+                updateCardState('sled', data.sled_store);
+                updateCardState('postgres', data.postgres_store);
+                updateCardState('mcp', data.mcp_server);
+                
+                document.getElementById('uptime').innerText = data.uptime_seconds + 's';
+                
+            } catch (error) {
+                console.error("Failed to fetch status", error);
+                
+                ['evento', 'sled', 'postgres', 'mcp'].forEach(prefix => {
+                    updateCardState(prefix, 'Offline');
+                });
+            }
+        }
+
+        // Poll every 2 seconds
+        fetchStatus();
+        setInterval(fetchStatus, 2000);
+    </script>
+</body>
+</html>

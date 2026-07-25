@@ -11,6 +11,12 @@ pub struct StorageConfig {
     
     /// Sled flush interval in milliseconds (default: 2000)
     pub sled_flush_interval_ms: u64,
+    
+    /// External Postgres URL for cold analytics data
+    pub postgres_url: String,
+    
+    /// Interval in milliseconds to run background health checks (default: 60000)
+    pub health_check_interval_ms: u64,
 }
 
 impl Default for StorageConfig {
@@ -23,6 +29,9 @@ impl Default for StorageConfig {
             data_dir,
             sled_cache_capacity: 1024 * 1024 * 1024,
             sled_flush_interval_ms: 2000,
+            health_check_interval_ms: 60_000,
+            postgres_url: std::env::var("DATABASE_URL")
+                .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/evento".to_string()),
         }
     }
 }
@@ -33,10 +42,6 @@ impl StorageConfig {
         self.data_dir.join("sled")
     }
 
-    #[must_use]
-    pub fn duckdb_path(&self) -> PathBuf {
-        self.data_dir.join("duckdb").join("evento.db")
-    }
 }
 
 #[cfg(test)]
@@ -46,10 +51,8 @@ mod tests {
     #[test]
     fn test_default_paths() {
         let config = StorageConfig::default();
-        let duckdb = config.duckdb_path();
         let sled = config.sled_dir();
         
-        assert!(duckdb.ends_with("evento.db"));
         assert!(sled.ends_with("sled"));
     }
 }

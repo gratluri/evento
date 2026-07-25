@@ -495,6 +495,53 @@ Test Context State
 
 ---
 
+## Simulation & Mocking Architecture
+
+evento includes a first-class mocking engine that acts as a **simulation interceptor** at the executor layer. It does *not* spin up actual mock servers on local ports. Instead, it intercepts outbound requests based on the step configuration and immediately returns synthesized responses.
+
+### Real Protocol vs Simulation
+
+The `mock_strategy` controls the simulation boundary:
+- **Mocked Steps (Simulation):** When a step has a `mock` block (and the strategy permits it), the engine **never touches the network**. It fabricates a response, applies simulated latency/errors, and proceeds to `extract`/`validate`.
+- **Non-Mocked Steps (Real Protocol):** The engine makes actual HTTP requests (via `reqwest`), Kafka publishes/consumes (via `rdkafka`), and DB queries (via `tokio-postgres`).
+
+### Mock Lifecycle Management (MockRuntime)
+
+Because mocks can be stateful (e.g. sequences of responses, failure injection tracking, call counts), the mock state is not global. To handle this, evento introduces the **MockRuntime** component, which strictly ties mock simulation state to the lifecycle of a specific test run.
+
+```
+                    Test Run Lifecycle
+                    
+  ┌──────────────────────────────────────────────┐
+  │              TestRun Instance                 │
+  │                                               │
+  │  ┌──────────────┐    ┌────────────────────┐  │
+  │  │ MockRuntime  │    │  ExecutionPlan     │  │
+  │  │ (per-run)    │    │                    │  │
+  │  │              │    └────────────────────┘  │
+  │  │  ┌────────┐  │                            │
+  │  │  │VU-0    │  │    ┌────────────────────┐  │
+  │  │  │counters│  │    │  VuContext (0..N)  │  │
+  │  │  └────────┘  │    │                    │  │
+  │  │  ┌────────┐  │    └────────────────────┘  │
+  │  │  │VU-1    │  │                            │
+  │  │  │counters│  │    ┌────────────────────┐  │
+  │  │  └────────┘  │    │  Worker Pool       │  │
+  │  │  ...         │    │                    │  │
+  │  └──────────────┘    └────────────────────┘  │
+  │                                               │
+  │  Created: on run start                       │
+  │  Destroyed: on run complete/cancel            │
+  └──────────────────────────────────────────────┘
+```
+
+- A **MockRuntime** is instantiated *per-test-run*.
+- It tracks the call counters, sequences, and random number generator state per Virtual User (VU) and per Step.
+- The `MockRuntime` intercepts execution right before the `StepExecutor` delegates to a real protocol driver, rendering dynamic templates (like `$request.*` and `$mock.call_count`) and simulating timeouts or errors before injecting the result back into the standard VU context flow.
+- The `MockRuntime` is destroyed when the test run ends, ensuring complete isolation between test executions and preventing cross-test state leakage.
+
+---
+
 ## Deployment Architecture
 
 ### Single-Node Deployment (Development/Small Tests)

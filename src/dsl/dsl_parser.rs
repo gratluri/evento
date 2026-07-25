@@ -118,6 +118,9 @@ pub struct Config {
 
     /// Default timeout for individual steps (§3.3). Default: "10s".
     pub step_timeout: Option<String>,
+
+    /// Mock resolution strategy (§3.4): auto, disabled, required.
+    pub mock_strategy: Option<String>,
 }
 
 /// Ramp-up strategy (§3.2).
@@ -313,6 +316,12 @@ pub struct Step {
 
     /// Context key to store module outputs (§11.1).
     pub outputs_to: Option<String>,
+
+    // --- Mocking (§7.6) ---
+
+    /// Step-level mock definition (§7.6). Provides synthetic responses
+    /// when the target service is unavailable or when running in mock mode.
+    pub mock: Option<MockConfig>,
 }
 
 // =============================================================================
@@ -486,6 +495,113 @@ pub struct Output {
 
     /// API key for authenticated exports.
     pub api_key: Option<String>,
+}
+
+// =============================================================================
+// Mock Configuration (§7.6) — Step-Level Mocking
+// =============================================================================
+
+/// Step-level mock definition (§7.6.1).
+///
+/// Provides synthetic responses for a step when the target service is
+/// unavailable or when running in mock mode. Supports static responses,
+/// dynamic generation, stateful sequences, failure injection, and
+/// request/response contract schemas.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MockConfig {
+    /// Single response definition (§7.6.2).
+    pub response: Option<MockResponse>,
+
+    /// Ordered sequence of responses for stateful simulation (§7.6.3).
+    pub responses: Option<Vec<MockResponse>>,
+
+    /// Behavior when `responses` list is exhausted (§7.6.3).
+    /// Values: repeat_last (default), cycle, error.
+    pub on_exhausted: Option<String>,
+
+    /// Advanced failure injection controls (§7.6.4).
+    pub behavior: Option<MockBehavior>,
+
+    /// JSON Schema for request contract validation (§7.6.6).
+    pub request_schema: Option<serde_yaml::Value>,
+
+    /// JSON Schema for response contract validation (§7.6.6).
+    pub response_schema: Option<serde_yaml::Value>,
+}
+
+/// Mock response definition (§7.6.2).
+///
+/// Supports HTTP (status/headers/body), Kafka (message), and
+/// Database (rows) response shapes. All fields support eDSL
+/// template interpolation including `$request.*` and `$mock.call_count`.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MockResponse {
+    /// HTTP status code.
+    pub status: Option<u16>,
+
+    /// HTTP response headers.
+    pub headers: Option<HashMap<String, String>>,
+
+    /// Response body — supports templates (§7.6.2).
+    pub body: Option<serde_yaml::Value>,
+
+    /// Simulated processing latency. E.g., "200ms", "${$random.int(50,200)}ms".
+    pub latency: Option<String>,
+
+    /// Simulated delay before response (for Kafka observe mocks). E.g., "500ms".
+    pub delay: Option<String>,
+
+    /// Kafka mock: synthetic message content (§7.6.5).
+    pub message: Option<serde_yaml::Value>,
+
+    /// Database mock: synthetic result rows (§7.6.5).
+    pub rows: Option<Vec<serde_yaml::Value>>,
+}
+
+/// Mock failure injection behavior (§7.6.4).
+///
+/// Controls probabilistic error injection, latency simulation,
+/// and timeout simulation for resilience testing.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MockBehavior {
+    /// Fraction of calls that return error_response (0.0–1.0).
+    pub error_rate: Option<f64>,
+
+    /// Response returned on injected errors.
+    pub error_response: Option<MockResponse>,
+
+    /// Latency simulation: fixed string or distribution object.
+    pub latency: Option<MockLatency>,
+
+    /// Fraction of calls that simulate a complete timeout (0.0–1.0).
+    pub timeout_rate: Option<f64>,
+}
+
+/// Mock latency configuration (§7.6.4).
+///
+/// Can be a fixed duration string or a statistical distribution.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(untagged)]
+pub enum MockLatency {
+    /// Fixed duration string: "200ms".
+    Fixed(String),
+    /// Statistical distribution: normal, uniform, etc.
+    Distribution(MockLatencyDistribution),
+}
+
+/// Mock latency distribution parameters (§7.6.4).
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MockLatencyDistribution {
+    /// Distribution type: normal, uniform.
+    pub distribution: String,
+    /// Mean value (for normal distribution). E.g., "200ms".
+    pub mean: Option<String>,
+    /// Standard deviation (for normal distribution). E.g., "50ms".
+    pub stddev: Option<String>,
+    /// Minimum value (for uniform distribution). E.g., "100ms".
+    pub min: Option<String>,
+    /// Maximum value (for uniform distribution). E.g., "500ms".
+    pub max: Option<String>,
 }
 
 // =============================================================================

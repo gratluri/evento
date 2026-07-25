@@ -83,6 +83,23 @@ The platform supports multiple workload models, specified by the `mode` paramete
 *   `replay`: Executes based on a captured log of traffic. In this mode, the `source` parameter MUST point to a valid traffic log file, and an optional `speed` multiplier MAY be provided.
 *   `scheduled`: Defers execution to a CRON scheduler. When used, a `cron` expression MUST be provided.
 
+### 3.4 Mock Resolution Strategy
+
+When steps define `mock` blocks (see Section 7.6), the `mock_strategy` config field determines globally how the engine resolves step execution:
+
+*   `mock_strategy` (enum, default: `auto`): Controls mock activation.
+    *   `auto`: Steps with a `mock` block use their mock response. Steps without `mock` call real services.
+    *   `disabled`: All `mock` blocks are ignored. Every step executes against real services.
+    *   `required`: Every step MUST define a `mock` block. Steps without one fail immediately. Used for fully offline testing.
+
+```yaml
+config:
+  mock_strategy: auto
+  timeout: 5m
+```
+
+> **Future Extension:** A `record` strategy is planned for a future release, which would execute against real services while capturing request/response pairs for automatic mock generation.
+
 ### 3.2 Concurrency and Virtual Users
 
 For load and stress testing, the framework spawns isolated execution contexts known as Virtual Users (VUs).
@@ -359,6 +376,242 @@ For databases, the result set is typically made available under `response.rows` 
 ### 7.5 Generic and Custom Protocols
 
 The platform MUST provide an extensible plugin interface to support enterprise-specific protocols such as JMS, SOAP, IBM MQ, or proprietary binary formats (see Section 9.3).
+
+### 7.6 Step-Level Mocking
+
+In agentic automation workflows, an AI agent MAY author tests for systems that do not yet exist — services that are unimplemented, undeployed, or under active parallel development. eDSL addresses this with first-class **step-level mocking**: each step MAY define a `mock` block that provides a synthetic response when the target service is unavailable or when the test is running in mock mode (§3.4).
+
+Mocks are defined **per-step**, not globally. Each test scenario dictates exactly how each interaction should behave, providing explicit control over the simulated responses. This design enables AI agents to generate complete, self-contained test files that can be validated and dry-run without any live infrastructure.
+
+#### 7.6.1 Mock Definition
+
+A step's `mock` block defines the synthetic response the engine returns instead of (or as a fallback for) calling the real service. The mock is co-located with the step that defines the target protocol, endpoint, and request.
+
+```yaml
+- name: create_order
+  protocol: https
+  endpoint: /api/orders
+  method: POST
+  body:
+    customerId: "${$faker.uuid()}"
+    amount: 99.99
+  mock:
+    response:
+      status: 201
+      headers:
+        Content-Type: application/json
+      body:
+        orderId: "${$faker.uuid()}"
+        status: "created"
+        amount: "${$request.body.amount}"
+  extract:
+    orderId: response.body.orderId
+  validate:
+    - "response.status == 201"
+```
+
+When a `mock` is present and the mock strategy is `auto` or `required` (§3.4), the engine skips the real protocol call and returns the mock response. The step's `extract`, `validate`, and `track_metric` blocks operate on the mock response exactly as they would on a real response.
+
+Key `mock` fields:
+
+*   `response` (object): A single response definition (see §7.6.2).
+*   `responses` (list of objects): An ordered sequence of responses for stateful simulation (see §7.6.3).
+*   `on_exhausted` (enum): Behavior when `responses` list is exhausted: `repeat_last` (default), `cycle`, `error`.
+*   `behavior` (object): Advanced failure injection controls (see §7.6.4).
+*   `request_schema` (object, OPTIONAL): JSON Schema or inline schema defining the expected request contract (see §7.6.7).
+*   `response_schema` (object, OPTIONAL): JSON Schema or inline schema defining the expected response contract (see §7.6.7).
+
+#### 7.6.2 Dynamic Response Generation
+
+Mock responses support the full eDSL expression engine. In addition to `$faker`, `$context`, and `$random`, mock responses have access to:
+
+*   **`$request.*`** — The incoming request being mocked. Allows echo-back patterns (e.g., `${$request.body.amount}`).
+*   **`$mock.call_count`** — The number of times this step's mock has been invoked within the current VU. Enables count-dependent behavior.
+
+```yaml
+- name: process_payment
+  protocol: https
+  endpoint: /api/payments
+  method: POST
+  body:
+    amount: 150.00
+    currency: "USD"
+  mock:
+    response:
+      status: 200
+      body:
+        transactionId: "${$faker.uuid()}"
+        amount: "${$request.body.amount}"
+        currency: "${$request.body.currency}"
+        status: "approved"
+        processedAt: "${$faker.iso8601()}"
+      latency: "${$random.int(50, 200)}ms"
+```
+
+The `latency` field introduces simulated processing time before the mock response is returned, allowing realistic timing in the test flow.
+
+#### 7.6.3 Stateful Mock Sequences
+
+For simulating realistic multi-call interactions (e.g., polling for status changes, paginated APIs), a step's mock MAY define an ordered `responses` list. Each invocation of the step consumes the next response in the sequence.
+
+```yaml
+- name: check_job_status
+  protocol: https
+  endpoint: /api/jobs/123/status
+  method: GET
+  mock:
+    responses:
+      - status: 200
+        body: { status: "processing", progress: 25 }
+      - status: 200
+        body: { status: "processing", progress: 75 }
+      - status: 200
+        body: { status: "completed", result: "success" }
+    on_exhausted: repeat_last
+```
+
+The `on_exhausted` field determines behavior after all responses are consumed:
+
+*   `repeat_last` (default): The final response repeats indefinitely.
+*   `cycle`: The sequence restarts from the first response.
+*   `error`: The step fails with a mock exhaustion error.
+
+#### 7.6.4 Failure Injection
+
+Mock `behavior` blocks simulate infrastructure failures for resilience testing. These controls are probabilistic and apply per-invocation:
+
+```yaml
+- name: call_inventory_service
+  protocol: https
+  endpoint: /api/inventory/check
+  method: POST
+  mock:
+    response:
+      status: 200
+      body:
+        available: true
+        quantity: "${$random.int(1, 100)}"
+    behavior:
+      error_rate: 0.3
+      error_response:
+        status: 503
+        body: { error: "Service Unavailable" }
+      latency:
+        distribution: normal
+        mean: 200ms
+        stddev: 50ms
+      timeout_rate: 0.05
+```
+
+*   `error_rate` (float, 0.0–1.0): Fraction of calls that return the `error_response` instead of the normal response.
+*   `error_response` (object): The response returned on injected errors.
+*   `latency` (object or string): Either a fixed duration string or a distribution object with `distribution` (normal, uniform), `mean`, `stddev`, `min`, `max`.
+*   `timeout_rate` (float, 0.0–1.0): Fraction of calls that simulate a complete timeout (no response).
+
+#### 7.6.5 Protocol-Specific Mocks
+
+**HTTP/HTTPS Mocks** return `status`, `headers`, and `body`:
+
+```yaml
+mock:
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json
+      X-Request-ID: "${$faker.uuid()}"
+    body:
+      data: []
+```
+
+**Kafka Mocks** return synthetic messages for `observe` mode steps:
+
+```yaml
+- name: observe_order_event
+  protocol: kafka
+  topic: orders.cdc
+  mode: observe
+  expect:
+    message.operation: INSERT
+  within: 5s
+  mock:
+    response:
+      message:
+        operation: INSERT
+        after:
+          id: "${$context.orderId}"
+          status: "created"
+      delay: 500ms
+```
+
+The `delay` field simulates the time between the triggering event and the CDC observation.
+
+**Database Mocks** return synthetic result sets:
+
+```yaml
+- name: query_order_status
+  protocol: database
+  connection: postgres://orders-db
+  query: "SELECT status FROM orders WHERE id = '${$context.orderId}'"
+  mock:
+    response:
+      rows:
+        - status: "completed"
+          amount: "${$random.decimal(10, 1000)}"
+          customer_id: "${$context.customerId}"
+```
+
+> **Future Extension:** gRPC streaming mocks (simulating multiple messages over time) are planned for a future release. The current specification covers unary gRPC mocks only.
+
+#### 7.6.6 Request and Response Contracts
+
+In agentic development workflows, the AI agent typically knows the expected interface contracts (input/output definitions) before the service is implemented. eDSL supports embedding these contracts alongside mock definitions to ensure that:
+
+1.  **Mock responses conform** to the expected output contract — catching stale mocks.
+2.  **Requests conform** to the expected input contract — validating test correctness.
+3.  **Real service responses** (when mocks are disabled) still match the contract — detecting API drift.
+
+Contracts are defined using `request_schema` and `response_schema` fields within the `mock` block. These accept inline JSON Schema-compatible definitions:
+
+```yaml
+- name: create_order
+  protocol: https
+  endpoint: /api/orders
+  method: POST
+  body:
+    customerId: "c-123"
+    amount: 99.99
+  mock:
+    request_schema:
+      type: object
+      properties:
+        customerId:
+          type: string
+        amount:
+          type: number
+          minimum: 0
+      required: [customerId, amount]
+    response_schema:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [created, pending, failed]
+        amount:
+          type: number
+      required: [orderId, status]
+    response:
+      status: 201
+      body:
+        orderId: "${$faker.uuid()}"
+        status: "created"
+        amount: "${$request.body.amount}"
+```
+
+The engine MUST validate mock responses against `response_schema` at parse time (static validation) and MAY validate real responses at runtime when `mock_strategy` is `disabled`.
+
 
 ## 8. Validation and Assertions
 
@@ -1951,6 +2204,291 @@ outputs:
     endpoint: "http://prometheus:9090"
   - format: ai_insights
     file: "results/mega_${$timestamp}.json"
+```
+
+---
+
+### Category 11: Step-Level Mocking (Examples 51–55)
+
+*Mock definitions, dynamic responses, stateful sequences, failure injection, and full integration with mocks (§7.6).*
+
+#### Example 51 — Simple HTTP Mock with Static Response
+
+A step with a co-located mock that returns a static JSON response.
+
+```yaml
+test: simple_http_mock
+config:
+  mock_strategy: auto
+scenario:
+  - name: get_user
+    protocol: https
+    endpoint: /api/users/123
+    method: GET
+    mock:
+      response:
+        status: 200
+        headers:
+          Content-Type: application/json
+        body:
+          id: "123"
+          name: "Jane Doe"
+          email: "jane@example.com"
+    validate:
+      - "response.status == 200"
+    extract:
+      userName: response.body.name
+```
+
+#### Example 52 — Mock with Dynamic Response and Contract Schema
+
+Demonstrates `$faker`, `$request` interpolation, and request/response contract schemas (§7.6.2, §7.6.6).
+
+```yaml
+test: dynamic_mock_with_contract
+scenario:
+  - name: create_order
+    protocol: https
+    endpoint: /api/orders
+    method: POST
+    body:
+      customerId: "${$faker.uuid()}"
+      amount: 149.99
+      currency: "USD"
+    mock:
+      request_schema:
+        type: object
+        properties:
+          customerId:
+            type: string
+          amount:
+            type: number
+            minimum: 0
+          currency:
+            type: string
+            enum: [USD, EUR, GBP]
+        required: [customerId, amount]
+      response_schema:
+        type: object
+        properties:
+          orderId:
+            type: string
+          status:
+            type: string
+            enum: [created, pending, failed]
+          amount:
+            type: number
+        required: [orderId, status]
+      response:
+        status: 201
+        body:
+          orderId: "${$faker.uuid()}"
+          status: "created"
+          amount: "${$request.body.amount}"
+          processedAt: "${$faker.iso8601()}"
+    extract:
+      orderId: response.body.orderId
+    validate:
+      - "response.status == 201"
+```
+
+#### Example 53 — Stateful Mock Sequence (Polling Pattern)
+
+Demonstrates ordered response sequences with `on_exhausted` for simulating a job polling workflow (§7.6.3).
+
+```yaml
+test: stateful_mock_polling
+scenario:
+  - name: submit_job
+    protocol: https
+    endpoint: /api/jobs
+    method: POST
+    body:
+      type: "data_export"
+    mock:
+      response:
+        status: 202
+        body:
+          jobId: "job-42"
+          status: "accepted"
+    extract:
+      jobId: response.body.jobId
+  - name: poll_status
+    protocol: https
+    endpoint: "/api/jobs/${$context.jobId}/status"
+    method: GET
+    mock:
+      responses:
+        - status: 200
+          body: { status: "processing", progress: 25 }
+        - status: 200
+          body: { status: "processing", progress: 75 }
+        - status: 200
+          body: { status: "completed", result: "success" }
+      on_exhausted: repeat_last
+    validate:
+      - "response.status == 200"
+```
+
+#### Example 54 — Failure Injection Mock
+
+Demonstrates probabilistic error injection with latency distribution for resilience testing (§7.6.4).
+
+```yaml
+test: failure_injection_mock
+scenario:
+  - name: call_flaky_service
+    protocol: https
+    endpoint: /api/inventory/check
+    method: POST
+    body:
+      productId: "p-001"
+    mock:
+      response:
+        status: 200
+        body:
+          available: true
+          quantity: "${$random.int(1, 100)}"
+      behavior:
+        error_rate: 0.3
+        error_response:
+          status: 503
+          body:
+            error: "Service Unavailable"
+            retryAfter: 5
+        latency:
+          distribution: normal
+          mean: 200ms
+          stddev: 50ms
+        timeout_rate: 0.05
+    retry:
+      max_attempts: 3
+      backoff: exponential
+      delay: 1s
+```
+
+#### Example 55 — Full Integration Test with All Services Mocked
+
+A complete end-to-end checkout flow where every service interaction is mocked — ready to run without any live infrastructure. Demonstrates progressive fidelity: set `mock_strategy: disabled` to run against real services.
+
+```yaml
+test: fully_mocked_checkout
+description: "Complete e-commerce checkout with all services mocked"
+config:
+  mock_strategy: auto
+  virtual_users: 5
+  duration: 2m
+scenario:
+  - name: login
+    protocol: https
+    endpoint: /api/auth/login
+    method: POST
+    body:
+      username: "${$faker.username()}"
+      password: "test123"
+    mock:
+      request_schema:
+        type: object
+        properties:
+          username: { type: string }
+          password: { type: string }
+        required: [username, password]
+      response:
+        status: 200
+        body:
+          token: "${$faker.uuid()}"
+          userId: "${$faker.uuid()}"
+    extract:
+      authToken: response.body.token
+      userId: response.body.userId
+  - name: browse_products
+    protocol: https
+    endpoint: /api/products
+    method: GET
+    headers:
+      Authorization: "Bearer ${$context.authToken}"
+    mock:
+      response:
+        status: 200
+        body:
+          items:
+            - id: "prod-001"
+              name: "Widget A"
+              price: 29.99
+            - id: "prod-002"
+              name: "Widget B"
+              price: 49.99
+    extract:
+      products: response.body.items
+  - name: place_order
+    protocol: https
+    endpoint: /api/orders
+    method: POST
+    headers:
+      Authorization: "Bearer ${$context.authToken}"
+    body:
+      userId: "${$context.userId}"
+      items:
+        - productId: "prod-001"
+          quantity: 2
+    mock:
+      response_schema:
+        type: object
+        properties:
+          orderId: { type: string }
+          total: { type: number }
+          status: { type: string, enum: [created, pending] }
+        required: [orderId, total, status]
+      response:
+        status: 201
+        body:
+          orderId: "${$faker.uuid()}"
+          total: 59.98
+          status: "created"
+    extract:
+      orderId: response.body.orderId
+    validate:
+      - "response.status == 201"
+  - name: verify_order_in_db
+    protocol: database
+    connection: postgres://orders-db
+    query: "SELECT status FROM orders WHERE id = '${$context.orderId}'"
+    mock:
+      response:
+        rows:
+          - status: "created"
+            order_id: "${$context.orderId}"
+  - name: observe_order_event
+    protocol: kafka
+    topic: orders.cdc
+    mode: observe
+    expect:
+      message.operation: INSERT
+    within: 5s
+    mock:
+      response:
+        message:
+          operation: INSERT
+          after:
+            id: "${$context.orderId}"
+            status: "created"
+        delay: 200ms
+  - name: send_notification
+    protocol: https
+    endpoint: /api/notifications
+    method: POST
+    body:
+      userId: "${$context.userId}"
+      type: "order_confirmation"
+      orderId: "${$context.orderId}"
+    mock:
+      response:
+        status: 202
+        body:
+          notificationId: "${$faker.uuid()}"
+          queued: true
+    validate:
+      - "response.status == 202"
 ```
 
 ---

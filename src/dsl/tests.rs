@@ -1586,4 +1586,543 @@ outputs:
         let rules = plan.validation.as_ref().unwrap().business_rules.as_ref().unwrap();
         assert_eq!(rules.len(), 2);
     }
+
+    // =========================================================================
+    // Category 11: Step-Level Mocking (51-60) — §7.6
+    // =========================================================================
+
+    #[test]
+    fn test_51_simple_http_mock() {
+        let yaml = r#"
+test: simple_http_mock
+config:
+  mock_strategy: auto
+scenario:
+  - name: get_user
+    protocol: https
+    endpoint: /api/users/123
+    method: GET
+    mock:
+      response:
+        status: 200
+        headers:
+          Content-Type: application/json
+        body:
+          id: "123"
+          name: "Jane Doe"
+          email: "jane@example.com"
+    validate:
+      - "response.status == 200"
+    extract:
+      userName: response.body.name
+"#;
+        let plan = TestPlan::from_yaml_str(yaml).unwrap();
+        let config = plan.config.as_ref().unwrap();
+        assert_eq!(config.mock_strategy.as_deref(), Some("auto"));
+        let mock = plan.scenario[0].mock.as_ref().unwrap();
+        let response = mock.response.as_ref().unwrap();
+        assert_eq!(response.status, Some(200));
+        assert!(response.headers.is_some());
+        assert!(response.body.is_some());
+    }
+
+    #[test]
+    fn test_52_mock_with_dynamic_response_and_contract() {
+        let yaml = r#"
+test: dynamic_mock_with_contract
+scenario:
+  - name: create_order
+    protocol: https
+    endpoint: /api/orders
+    method: POST
+    body:
+      customerId: "${$faker.uuid()}"
+      amount: 149.99
+      currency: "USD"
+    mock:
+      request_schema:
+        type: object
+        properties:
+          customerId:
+            type: string
+          amount:
+            type: number
+            minimum: 0
+          currency:
+            type: string
+            enum: [USD, EUR, GBP]
+        required: [customerId, amount]
+      response_schema:
+        type: object
+        properties:
+          orderId:
+            type: string
+          status:
+            type: string
+            enum: [created, pending, failed]
+          amount:
+            type: number
+        required: [orderId, status]
+      response:
+        status: 201
+        body:
+          orderId: "${$faker.uuid()}"
+          status: "created"
+          amount: "${$request.body.amount}"
+          processedAt: "${$faker.iso8601()}"
+    extract:
+      orderId: response.body.orderId
+    validate:
+      - "response.status == 201"
+"#;
+        let plan = TestPlan::from_yaml_str(yaml).unwrap();
+        let mock = plan.scenario[0].mock.as_ref().unwrap();
+        // Contract schemas
+        assert!(mock.request_schema.is_some());
+        assert!(mock.response_schema.is_some());
+        // Response
+        let response = mock.response.as_ref().unwrap();
+        assert_eq!(response.status, Some(201));
+        assert!(response.body.is_some());
+    }
+
+    #[test]
+    fn test_53_kafka_cdc_mock_with_delay() {
+        let yaml = r#"
+test: kafka_mock
+scenario:
+  - name: place_order
+    protocol: https
+    endpoint: /api/orders
+    method: POST
+    mock:
+      response:
+        status: 201
+        body:
+          orderId: "ord-123"
+    extract:
+      orderId: response.body.orderId
+  - name: observe_cdc
+    protocol: kafka
+    topic: orders.cdc
+    mode: observe
+    expect:
+      message.operation: INSERT
+    within: 5s
+    mock:
+      response:
+        message:
+          operation: INSERT
+          after:
+            id: "${$context.orderId}"
+            status: "created"
+        delay: 500ms
+"#;
+        let plan = TestPlan::from_yaml_str(yaml).unwrap();
+        // Kafka step mock
+        let mock = plan.scenario[1].mock.as_ref().unwrap();
+        let response = mock.response.as_ref().unwrap();
+        assert!(response.message.is_some());
+        assert_eq!(response.delay.as_deref(), Some("500ms"));
+    }
+
+    #[test]
+    fn test_54_mock_glob_endpoint_and_method_list() {
+        let yaml = r#"
+test: mock_with_details
+scenario:
+  - name: get_user_by_id
+    protocol: https
+    endpoint: /api/users/456
+    method: GET
+    mock:
+      response:
+        status: 200
+        body:
+          id: "456"
+          name: "${$faker.name()}"
+        latency: "${$random.int(50, 200)}ms"
+"#;
+        let plan = TestPlan::from_yaml_str(yaml).unwrap();
+        let mock = plan.scenario[0].mock.as_ref().unwrap();
+        let response = mock.response.as_ref().unwrap();
+        assert_eq!(response.status, Some(200));
+        assert!(response.latency.is_some());
+    }
+
+    #[test]
+    fn test_55_stateful_mock_sequence() {
+        let yaml = r#"
+test: stateful_mock
+scenario:
+  - name: poll_status
+    protocol: https
+    endpoint: /api/jobs/123/status
+    method: GET
+    mock:
+      responses:
+        - status: 200
+          body: { status: "processing", progress: 25 }
+        - status: 200
+          body: { status: "processing", progress: 75 }
+        - status: 200
+          body: { status: "completed", result: "success" }
+      on_exhausted: repeat_last
+"#;
+        let plan = TestPlan::from_yaml_str(yaml).unwrap();
+        let mock = plan.scenario[0].mock.as_ref().unwrap();
+        let responses = mock.responses.as_ref().unwrap();
+        assert_eq!(responses.len(), 3);
+        assert_eq!(responses[0].status, Some(200));
+        assert_eq!(responses[2].status, Some(200));
+        assert_eq!(mock.on_exhausted.as_deref(), Some("repeat_last"));
+    }
+
+    #[test]
+    fn test_56_failure_injection_mock() {
+        let yaml = r#"
+test: failure_injection
+scenario:
+  - name: call_flaky
+    protocol: https
+    endpoint: /api/inventory/check
+    method: POST
+    body:
+      productId: "p-001"
+    mock:
+      response:
+        status: 200
+        body:
+          available: true
+          quantity: 42
+      behavior:
+        error_rate: 0.3
+        error_response:
+          status: 503
+          body:
+            error: "Service Unavailable"
+            retryAfter: 5
+        latency:
+          distribution: normal
+          mean: 200ms
+          stddev: 50ms
+        timeout_rate: 0.05
+    retry:
+      max_attempts: 3
+      backoff: exponential
+      delay: 1s
+"#;
+        let plan = TestPlan::from_yaml_str(yaml).unwrap();
+        let mock = plan.scenario[0].mock.as_ref().unwrap();
+        let behavior = mock.behavior.as_ref().unwrap();
+        assert_eq!(behavior.error_rate, Some(0.3));
+        assert_eq!(behavior.timeout_rate, Some(0.05));
+        // Error response
+        let err_resp = behavior.error_response.as_ref().unwrap();
+        assert_eq!(err_resp.status, Some(503));
+        // Latency distribution
+        match behavior.latency.as_ref().unwrap() {
+            MockLatency::Distribution(d) => {
+                assert_eq!(d.distribution, "normal");
+                assert_eq!(d.mean.as_deref(), Some("200ms"));
+                assert_eq!(d.stddev.as_deref(), Some("50ms"));
+            }
+            _ => panic!("Expected MockLatency::Distribution"),
+        }
+    }
+
+    #[test]
+    fn test_57_database_mock() {
+        let yaml = r#"
+test: db_mock
+scenario:
+  - name: query_orders
+    protocol: database
+    connection: postgres://orders-db
+    query: "SELECT status, amount FROM orders WHERE id = 'ord-123'"
+    mock:
+      response:
+        rows:
+          - status: "completed"
+            amount: 99.99
+          - status: "pending"
+            amount: 49.50
+"#;
+        let plan = TestPlan::from_yaml_str(yaml).unwrap();
+        let mock = plan.scenario[0].mock.as_ref().unwrap();
+        let response = mock.response.as_ref().unwrap();
+        let rows = response.rows.as_ref().unwrap();
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn test_58_mock_strategy_in_config() {
+        let yaml_auto = r#"
+test: strategy_auto
+config:
+  mock_strategy: auto
+  timeout: 5m
+scenario:
+  - name: step1
+    protocol: https
+    endpoint: /api/test
+    mock:
+      response:
+        status: 200
+        body: { ok: true }
+"#;
+        let plan = TestPlan::from_yaml_str(yaml_auto).unwrap();
+        assert_eq!(plan.config.as_ref().unwrap().mock_strategy.as_deref(), Some("auto"));
+
+        let yaml_required = r#"
+test: strategy_required
+config:
+  mock_strategy: required
+scenario:
+  - name: step1
+    protocol: https
+    endpoint: /api/test
+    mock:
+      response:
+        status: 200
+        body: { ok: true }
+"#;
+        let plan2 = TestPlan::from_yaml_str(yaml_required).unwrap();
+        assert_eq!(plan2.config.as_ref().unwrap().mock_strategy.as_deref(), Some("required"));
+
+        let yaml_disabled = r#"
+test: strategy_disabled
+config:
+  mock_strategy: disabled
+scenario:
+  - name: step1
+    protocol: https
+    endpoint: /api/test
+"#;
+        let plan3 = TestPlan::from_yaml_str(yaml_disabled).unwrap();
+        assert_eq!(plan3.config.as_ref().unwrap().mock_strategy.as_deref(), Some("disabled"));
+        assert!(plan3.scenario[0].mock.is_none());
+    }
+
+    #[test]
+    fn test_59_multiple_mocks_across_protocols() {
+        let yaml = r#"
+test: multi_protocol_mocks
+scenario:
+  - name: http_call
+    protocol: https
+    endpoint: /api/users
+    method: GET
+    mock:
+      response:
+        status: 200
+        body:
+          users: []
+  - name: kafka_observe
+    protocol: kafka
+    topic: events.users
+    mode: observe
+    expect:
+      message.type: USER_CREATED
+    within: 3s
+    mock:
+      response:
+        message:
+          type: USER_CREATED
+          data:
+            id: "u-001"
+        delay: 100ms
+  - name: db_check
+    protocol: database
+    connection: postgres://users-db
+    query: "SELECT count(*) FROM users"
+    mock:
+      response:
+        rows:
+          - count: 42
+"#;
+        let plan = TestPlan::from_yaml_str(yaml).unwrap();
+        assert_eq!(plan.scenario.len(), 3);
+        // All three steps have mocks
+        for step in &plan.scenario {
+            assert!(step.mock.is_some(), "Step '{}' should have a mock", step.name);
+        }
+        // HTTP mock
+        assert_eq!(plan.scenario[0].mock.as_ref().unwrap().response.as_ref().unwrap().status, Some(200));
+        // Kafka mock
+        assert!(plan.scenario[1].mock.as_ref().unwrap().response.as_ref().unwrap().message.is_some());
+        // DB mock
+        assert!(plan.scenario[2].mock.as_ref().unwrap().response.as_ref().unwrap().rows.is_some());
+    }
+
+    #[test]
+    fn test_60_full_integration_with_mocks() {
+        let yaml = r#"
+test: fully_mocked_checkout
+description: "Complete e-commerce checkout with all services mocked"
+config:
+  mock_strategy: auto
+  virtual_users: 5
+  duration: 2m
+  timeout: 5m
+scenario:
+  - name: login
+    protocol: https
+    endpoint: /api/auth/login
+    method: POST
+    body:
+      username: "${$faker.username()}"
+      password: "test123"
+    mock:
+      request_schema:
+        type: object
+        properties:
+          username: { type: string }
+          password: { type: string }
+        required: [username, password]
+      response:
+        status: 200
+        body:
+          token: "${$faker.uuid()}"
+          userId: "${$faker.uuid()}"
+    extract:
+      authToken: response.body.token
+      userId: response.body.userId
+    validate:
+      - "response.status == 200"
+  - name: browse_products
+    protocol: https
+    endpoint: /api/products
+    method: GET
+    headers:
+      Authorization: "Bearer ${$context.authToken}"
+    mock:
+      response:
+        status: 200
+        body:
+          items:
+            - id: "prod-001"
+              name: "Widget A"
+              price: 29.99
+            - id: "prod-002"
+              name: "Widget B"
+              price: 49.99
+    extract:
+      products: response.body.items
+  - name: add_items_loop
+    loop:
+      count: 2
+      over: product
+      from: "${$context.products}"
+    do:
+      - name: add_to_cart
+        protocol: https
+        endpoint: /api/cart
+        method: POST
+        body:
+          productId: "${$product.id}"
+          quantity: 1
+        mock:
+          response:
+            status: 200
+            body:
+              cartItemId: "${$faker.uuid()}"
+  - name: place_order
+    protocol: https
+    endpoint: /api/orders
+    method: POST
+    body:
+      userId: "${$context.userId}"
+    mock:
+      response_schema:
+        type: object
+        properties:
+          orderId: { type: string }
+          total: { type: number }
+          status: { type: string, enum: [created, pending] }
+        required: [orderId, total, status]
+      response:
+        status: 201
+        body:
+          orderId: "${$faker.uuid()}"
+          total: 59.98
+          status: "created"
+    extract:
+      orderId: response.body.orderId
+    validate:
+      - "response.status == 201"
+  - name: verify_notifications
+    parallel:
+      - - name: verify_order_db
+          protocol: database
+          connection: postgres://orders-db
+          query: "SELECT status FROM orders WHERE id = '${$context.orderId}'"
+          mock:
+            response:
+              rows:
+                - status: "created"
+      - - name: observe_cdc
+          protocol: kafka
+          topic: orders.cdc
+          mode: observe
+          expect:
+            message.operation: INSERT
+          within: 5s
+          mock:
+            response:
+              message:
+                operation: INSERT
+                after:
+                  id: "${$context.orderId}"
+              delay: 200ms
+      - - name: send_notification
+          protocol: https
+          endpoint: /api/notifications
+          method: POST
+          mock:
+            response:
+              status: 202
+              body:
+                queued: true
+"#;
+        let plan = TestPlan::from_yaml_str(yaml).unwrap();
+
+        // Top-level structure
+        assert_eq!(plan.test, "fully_mocked_checkout");
+        assert!(plan.description.is_some());
+        let config = plan.config.as_ref().unwrap();
+        assert_eq!(config.mock_strategy.as_deref(), Some("auto"));
+        assert_eq!(config.virtual_users, Some(5));
+
+        // Step 1: login with mock + request_schema
+        let login_mock = plan.scenario[0].mock.as_ref().unwrap();
+        assert!(login_mock.request_schema.is_some());
+        assert_eq!(login_mock.response.as_ref().unwrap().status, Some(200));
+
+        // Step 2: browse with mock
+        assert!(plan.scenario[1].mock.is_some());
+
+        // Step 3: loop with mock inside do block
+        assert!(plan.scenario[2].loop_config.is_some());
+        match plan.scenario[2].do_steps.as_ref().unwrap() {
+            DoBlock::Multiple(steps) => {
+                assert!(steps[0].mock.is_some());
+            }
+            _ => panic!("Expected DoBlock::Multiple"),
+        }
+
+        // Step 4: order with response_schema
+        let order_mock = plan.scenario[3].mock.as_ref().unwrap();
+        assert!(order_mock.response_schema.is_some());
+
+        // Step 5: parallel with mocks on each branch
+        let parallel = plan.scenario[4].parallel.as_ref().unwrap();
+        assert_eq!(parallel.len(), 3);
+        // DB mock
+        assert!(parallel[0][0].mock.as_ref().unwrap().response.as_ref().unwrap().rows.is_some());
+        // Kafka mock
+        assert!(parallel[1][0].mock.as_ref().unwrap().response.as_ref().unwrap().message.is_some());
+        // HTTP mock
+        assert_eq!(parallel[2][0].mock.as_ref().unwrap().response.as_ref().unwrap().status, Some(202));
+    }
 }

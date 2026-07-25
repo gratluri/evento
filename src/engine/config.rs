@@ -28,17 +28,14 @@ impl Default for StorageConfig {
 }
 
 impl StorageConfig {
+    #[must_use]
     pub fn sled_dir(&self) -> PathBuf {
-        let mut dir = self.data_dir.clone();
-        dir.push("sled");
-        dir
+        self.data_dir.join("sled")
     }
 
+    #[must_use]
     pub fn duckdb_path(&self) -> PathBuf {
-        let mut path = self.data_dir.clone();
-        path.push("duckdb");
-        path.push("evento.db");
-        path
+        self.data_dir.join("duckdb").join("evento.db")
     }
 }
 

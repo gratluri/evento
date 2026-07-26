@@ -1,0 +1,76 @@
+test: sales.buyflow.mock.validate_async_mock503_mock202_8
+description: Validating async_mock503_mock202 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: kafka
+  mock:
+    response:
+      status: 200
+      latency: 200ms
+  topic: events.16
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 202
+      latency: 100ms
+  wait_for:
+  - step_0
+  query: SELECT * FROM table_8
+- name: step_2
+  protocol: kafka
+  mock:
+    response:
+      status: 404
+      latency: 50ms
+  topic: events.66
+- name: step_3
+  protocol: http
+  mock:
+    response:
+      status: 503
+      latency: 1s
+  endpoint: /api/v1/resource/257
+  method: PUT
+- name: step_4
+  protocol: kafka
+  mock:
+    response:
+      status: 503
+      latency: 1s
+  topic: events.34
+- name: step_5
+  protocol: database
+  mock:
+    response:
+      status: 500
+      latency: 100ms
+  query: SELECT * FROM table_4
+- name: step_6
+  protocol: kafka
+  mock:
+    response:
+      status: 403
+      latency: 100ms
+  topic: events.72
+- name: step_7
+  protocol: http
+  mock:
+    response:
+      status: 204
+      latency: 50ms
+  endpoint: /api/v1/resource/217
+  method: POST
+- name: step_8
+  protocol: database
+  mock:
+    response:
+      status: 403
+      latency: 200ms
+  async: true
+  wait_for:
+  - step_1
+  query: SELECT * FROM table_6

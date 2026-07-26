@@ -1,0 +1,62 @@
+test: infra.health.mock.validate_kafka_async_mock200_32
+description: Validating kafka_async_mock200 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: database
+  mock:
+    response:
+      status: 404
+      latency: 50ms
+  query: SELECT * FROM table_8
+- name: step_1
+  protocol: kafka
+  mock:
+    response:
+      status: 503
+      latency: 100ms
+  wait_for:
+  - step_0
+  topic: events.40
+- name: step_2
+  protocol: kafka
+  mock:
+    response:
+      status: 204
+      latency: 200ms
+  async: true
+  topic: events.94
+- name: step_3
+  protocol: database
+  mock:
+    response:
+      status: 503
+      latency: 10ms
+  query: SELECT * FROM table_7
+- name: step_4
+  protocol: kafka
+  mock:
+    response:
+      status: 200
+      latency: 100ms
+  topic: events.59
+- name: step_5
+  protocol: kafka
+  mock:
+    response:
+      status: 400
+      latency: 1s
+  wait_for:
+  - step_4
+  topic: events.85
+- name: step_6
+  protocol: kafka
+  mock:
+    response:
+      status: 200
+      latency: 500ms
+  wait_for:
+  - step_5
+  topic: events.64

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Evento Admin Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -11,6 +12,8 @@
             --glass-bg: rgba(30, 41, 59, 0.7);
             --glass-border: rgba(255, 255, 255, 0.08);
             --accent-green: #10b981;
+            --accent-blue: #3b82f6;
+            --accent-red: #ef4444;
             --text-primary: #f8fafc;
             --text-secondary: #94a3b8;
         }
@@ -19,69 +22,90 @@
             margin: 0;
             padding: 0;
             font-family: 'Inter', sans-serif;
-            background: var(--bg-color);
+            background: radial-gradient(circle at top left, #1e1b4b, #0f172a 40%);
             color: var(--text-primary);
             min-height: 100vh;
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            background: radial-gradient(circle at top left, #1e1b4b, #0f172a 40%);
         }
 
-        header {
-            width: 100%;
-            padding: 2rem 0;
-            text-align: center;
-            border-bottom: 1px solid var(--glass-border);
-            background: rgba(15, 23, 42, 0.8);
+        /* Sidebar Navigation */
+        nav {
+            width: 250px;
+            background: rgba(15, 23, 42, 0.9);
+            border-right: 1px solid var(--glass-border);
             backdrop-filter: blur(12px);
-            margin-bottom: 3rem;
+            padding: 2rem 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
         }
 
-        h1 {
+        nav h1 {
             margin: 0;
-            font-size: 2.5rem;
+            font-size: 1.75rem;
             font-weight: 700;
             background: linear-gradient(to right, #38bdf8, #818cf8);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            letter-spacing: -1px;
+            text-align: center;
         }
 
+        .nav-item {
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background: var(--glass-bg);
+            color: var(--text-primary);
+        }
+
+        /* Main Content */
+        main {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        /* Dashboard Cards */
         .dashboard {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-            width: 90%;
-            max-width: 1200px;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
         }
 
         .card {
             background: var(--glass-bg);
             border: 1px solid var(--glass-border);
-            border-radius: 16px;
-            padding: 2rem;
+            border-radius: 12px;
+            padding: 1.5rem;
             backdrop-filter: blur(16px);
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
         }
 
         .card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1.5rem;
+            margin-bottom: 1rem;
         }
-
+        
         .card-title {
-            font-size: 1.25rem;
+            font-size: 1.1rem;
             font-weight: 600;
-            color: var(--text-primary);
         }
 
         .status-badge {
@@ -90,150 +114,643 @@
             gap: 0.5rem;
             padding: 0.25rem 0.75rem;
             border-radius: 999px;
-            font-size: 0.875rem;
+            font-size: 0.75rem;
             font-weight: 600;
             background: rgba(16, 185, 129, 0.1);
             color: var(--accent-green);
         }
 
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            background-color: var(--accent-green);
-            border-radius: 50%;
-            box-shadow: 0 0 12px var(--accent-green);
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-        }
-
         .metric {
-            font-size: 2rem;
+            font-size: 1.75rem;
             font-weight: 700;
             margin: 0;
             color: #e2e8f0;
         }
 
         .metric-label {
-            font-size: 0.875rem;
+            font-size: 0.8rem;
             color: var(--text-secondary);
             margin-top: 0.5rem;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--glass-bg);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--glass-border);
+        }
+
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        th {
+            background: rgba(0, 0, 0, 0.2);
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr.clickable:hover {
+            background: rgba(255, 255, 255, 0.05);
+            cursor: pointer;
+        }
+
+        /* Test Runs Layout */
+        .runs-container {
+            display: flex;
+            gap: 2rem;
+            align-items: flex-start;
+        }
+        .runs-list {
+            flex: 2;
+        }
+        .run-details {
+            flex: 1;
+            position: sticky;
+            top: 2rem;
+        }
+
+        /* Instance Progress Bar */
+        .progress-bar-container {
+            width: 100%;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            height: 8px;
+            overflow: hidden;
+            display: flex;
+        }
+        .progress-segment {
+            height: 100%;
+        }
+        .progress-success { background: var(--accent-green); }
+        .progress-failed { background: var(--accent-red); }
+
+        /* Vertical Timeline */
+        .timeline {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            border-left: 2px solid var(--glass-border);
+            margin-left: 1rem;
+        }
+
+        .timeline-step {
+            position: relative;
+            padding-left: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .timeline-step::before {
+            content: '';
+            position: absolute;
+            left: -7px;
+            top: 4px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--bg-color);
+            border: 2px solid var(--text-secondary);
+        }
+
+        .timeline-step.success::before {
+            border-color: var(--accent-green);
+            background: var(--accent-green);
+        }
+
+        .timeline-step.failed::before {
+            border-color: var(--accent-red);
+            background: var(--accent-red);
+        }
+
+        .step-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .step-meta {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+
+        /* Controls */
+        .controls-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        select {
+            background: var(--bg-color);
+            color: var(--text-primary);
+            border: 1px solid var(--glass-border);
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-family: inherit;
+        }
+
+        .pagination {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .btn {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border: 1px solid var(--glass-border);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn:hover:not(:disabled) {
+            background: rgba(255,255,255,0.2);
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        pre {
+            background: rgba(0,0,0,0.3);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.8rem;
+            border: 1px solid var(--glass-border);
         }
     </style>
 </head>
 <body>
-    <header>
-        <h1>Evento Admin</h1>
-    </header>
+    <nav>
+        <h1>Evento</h1>
+        <div class="nav-item active" onclick="switchTab('dashboard')">Dashboard</div>
+        <div class="nav-item" onclick="switchTab('runs')">Test Runs</div>
+    </nav>
 
-    <div class="dashboard">
-        <!-- Evento Core -->
-        <div class="card" id="card-evento">
-            <div class="card-header">
-                <span class="card-title">Evento Core</span>
-                <div class="status-badge">
-                    <div class="status-dot"></div>
-                    <span id="evento-status">Loading...</span>
+    <main>
+        <!-- Dashboard Section -->
+        <div id="dashboard" class="section active">
+            <h2 style="margin-top: 0;">System Health</h2>
+            <div class="dashboard">
+                <div class="card" id="card-evento">
+                    <div class="card-header">
+                        <span class="card-title">Core Engine</span>
+                        <div class="status-badge" id="badge-evento"><span id="status-evento">Loading</span></div>
+                    </div>
+                    <p class="metric" id="uptime">0s</p>
+                    <p class="metric-label">Uptime</p>
+                </div>
+                <div class="card" id="card-sled">
+                    <div class="card-header">
+                        <span class="card-title">Hot Store (Sled)</span>
+                        <div class="status-badge" id="badge-sled"><span id="status-sled">Loading</span></div>
+                    </div>
+                    <p class="metric">KV Ready</p>
+                </div>
+                <div class="card" id="card-postgres">
+                    <div class="card-header">
+                        <span class="card-title">Analytics (Postgres)</span>
+                        <div class="status-badge" id="badge-postgres"><span id="status-postgres">Loading</span></div>
+                    </div>
+                    <p class="metric">Online</p>
                 </div>
             </div>
-            <p class="metric" id="uptime">0s</p>
-            <p class="metric-label">Uptime</p>
-        </div>
-
-        <!-- Sled Store -->
-        <div class="card" id="card-sled">
-            <div class="card-header">
-                <span class="card-title">Sled (Hot Store)</span>
-                <div class="status-badge">
-                    <div class="status-dot"></div>
-                    <span id="sled-status">Loading...</span>
+            
+            <h2 style="margin-top: 1rem;">System Metrics (Past 2 Hours)</h2>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+                <div class="card" style="padding: 1rem;">
+                    <canvas id="cpuChart" style="width:100%; height:200px;"></canvas>
+                </div>
+                <div class="card" style="padding: 1rem;">
+                    <canvas id="memChart" style="width:100%; height:200px;"></canvas>
+                </div>
+                <div class="card" style="padding: 1rem;">
+                    <canvas id="netChart" style="width:100%; height:200px;"></canvas>
+                </div>
+                <div class="card" style="padding: 1rem;">
+                    <canvas id="tasksChart" style="width:100%; height:200px;"></canvas>
                 </div>
             </div>
-            <p class="metric">Operational</p>
-            <p class="metric-label">Key-Value Engine</p>
+            
+            <h2>Recent Runs Summary</h2>
+            <div class="card">
+                <p class="metric-label">Load test results appear here. Go to Test Runs to inspect.</p>
+            </div>
         </div>
 
-        <!-- Postgres Store -->
-        <div class="card" id="card-postgres">
-            <div class="card-header">
-                <span class="card-title">PostgreSQL (Cold Store)</span>
-                <div class="status-badge">
-                    <div class="status-dot"></div>
-                    <span id="postgres-status">Loading...</span>
+        <!-- Test Runs Section -->
+        <div id="runs" class="section">
+            <h2 style="margin-top: 0;">Test Executions</h2>
+            
+            <div class="controls-bar">
+                <div>
+                    <label for="namespace-filter">Namespace: </label>
+                    <select id="namespace-filter" onchange="filterRuns()">
+                        <option value="all">All Namespaces</option>
+                    </select>
+                </div>
+                <div class="pagination">
+                    <button class="btn" id="btn-prev" onclick="prevPage()">Previous</button>
+                    <span id="page-info">Page 1</span>
+                    <button class="btn" id="btn-next" onclick="nextPage()">Next</button>
                 </div>
             </div>
-            <p class="metric">Operational</p>
-            <p class="metric-label">Analytics Engine</p>
-        </div>
 
-        <!-- MCP Server -->
-        <div class="card" id="card-mcp">
-            <div class="card-header">
-                <span class="card-title">MCP Server</span>
-                <div class="status-badge">
-                    <div class="status-dot"></div>
-                    <span id="mcp-status">Loading...</span>
+            <div class="runs-container">
+                <div class="runs-list">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tests</th>
+                                <th>Run ID</th>
+                                <th>Status</th>
+                                <th>Virtual Users</th>
+                            </tr>
+                        </thead>
+                        <tbody id="runs-table-body">
+                            <tr><td colspan="4">Loading runs...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="run-details card" id="run-inspector" style="display: none;">
+                    <h3 id="inspector-title" style="margin-top: 0;">Run Details</h3>
+                    <p class="metric-label" id="inspector-subtitle"></p>
+                    <p class="metric-label" id="inspector-time"></p>
+                    
+                    <h4 style="margin-top: 1.5rem; margin-bottom: 0.5rem;">VU Instances</h4>
+                    <table style="font-size: 0.85rem;">
+                        <thead>
+                            <tr>
+                                <th>VU ID</th>
+                                <th>State</th>
+                                <th>Progress</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vu-table-body">
+                        </tbody>
+                    </table>
+
+                    <div id="timeline-container" style="display: none; margin-top: 1.5rem;">
+                        <h4>VU <span id="timeline-vuid"></span> Timeline</h4>
+                        <ul class="timeline" id="timeline-list">
+                        </ul>
+                    </div>
+
+                    <h4 style="margin-top: 1.5rem;">Test Definition</h4>
+                    <pre id="yaml-content"></pre>
                 </div>
             </div>
-            <p class="metric">SSE Active</p>
-            <p class="metric-label">Model Context Protocol</p>
         </div>
-    </div>
+    </main>
 
     <script>
-        function updateCardState(idPrefix, statusText) {
-            const statusEl = document.getElementById(idPrefix + '-status');
-            const cardEl = document.getElementById('card-' + idPrefix);
-            const badgeEl = statusEl.parentElement;
-            const dotEl = statusEl.previousElementSibling;
+        function switchTab(tabId) {
+            document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
             
-            statusEl.innerText = statusText;
-            
-            if (statusText === 'Green' || statusText === 'Active') {
-                badgeEl.style.color = 'var(--accent-green)';
-                badgeEl.style.background = 'rgba(16, 185, 129, 0.1)';
-                dotEl.style.backgroundColor = 'var(--accent-green)';
-                dotEl.style.animation = 'pulse 2s infinite';
-                cardEl.style.borderColor = 'var(--glass-border)';
-            } else {
-                badgeEl.style.color = '#ef4444'; // Red
-                badgeEl.style.background = 'rgba(239, 68, 68, 0.1)';
-                dotEl.style.backgroundColor = '#ef4444';
-                dotEl.style.animation = 'none';
-                cardEl.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+            document.getElementById(tabId).classList.add('active');
+            event.currentTarget.classList.add('active');
+
+            if (tabId === 'runs') {
+                fetchRuns();
             }
         }
 
-        async function fetchStatus() {
+        async function fetchSystemStatus() {
             try {
-                const response = await fetch('/api/status');
-                if (!response.ok) throw new Error("Network response was not ok");
-                
-                const data = await response.json();
-                
-                updateCardState('evento', data.evento_core);
-                updateCardState('sled', data.sled_store);
-                updateCardState('postgres', data.postgres_store);
-                updateCardState('mcp', data.mcp_server);
-                
-                document.getElementById('uptime').innerText = data.uptime_seconds + 's';
-                
-            } catch (error) {
-                console.error("Failed to fetch status", error);
-                
-                ['evento', 'sled', 'postgres', 'mcp'].forEach(prefix => {
-                    updateCardState(prefix, 'Offline');
+                const res = await fetch('/api/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('uptime').innerText = data.uptime_seconds + 's';
+                    
+                    updateStatus('evento', data.evento_core);
+                    updateStatus('sled', data.sled_store);
+                    updateStatus('postgres', data.postgres_store);
+                }
+            } catch (e) {
+                updateStatus('evento', 'Error');
+                updateStatus('sled', 'Error');
+                updateStatus('postgres', 'Error');
+            }
+        }
+
+        function updateStatus(id, status) {
+            document.getElementById('status-' + id).innerText = status;
+            const badge = document.getElementById('badge-' + id);
+            if (status === 'Green' || status === 'Active') {
+                badge.style.color = 'var(--accent-green)';
+                badge.style.background = 'rgba(16, 185, 129, 0.1)';
+            } else {
+                badge.style.color = 'var(--accent-red)';
+                badge.style.background = 'rgba(239, 68, 68, 0.1)';
+            }
+        }
+
+        let allRunsData = [];
+        let filteredRuns = [];
+        let currentPage = 1;
+        const PAGE_SIZE = 15;
+
+        async function fetchRuns() {
+            try {
+                const res = await fetch('/api/v1/tests/runs');
+                if (res.ok) {
+                    const runIds = await res.json();
+                    const tbody = document.getElementById('runs-table-body');
+                    tbody.innerHTML = '<tr><td colspan="4">Loading run details...</td></tr>';
+                    
+                    if (runIds.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4">No runs found</td></tr>';
+                        return;
+                    }
+
+                    // Fetch details for all runs to support client-side filtering/pagination
+                    let data = [];
+                    let namespaces = new Set();
+                    for (const id of runIds) {
+                        const runRes = await fetch('/api/v1/tests/runs/' + id);
+                        if (runRes.ok) {
+                            const runData = await runRes.json();
+                            data.push(runData);
+                            if (runData.plan && runData.plan.namespace) {
+                                // Extract base namespace (everything before the last slash)
+                                const parts = runData.plan.namespace.split('/');
+                                if (parts.length > 1) {
+                                    namespaces.add(parts.slice(0, -1).join('/'));
+                                } else {
+                                    namespaces.add(runData.plan.namespace);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Sort by submission time (newest first)
+                    data.sort((a, b) => {
+                        const timeA = a.plan?.metadata?.submitted_at || "";
+                        const timeB = b.plan?.metadata?.submitted_at || "";
+                        return timeB.localeCompare(timeA);
+                    });
+
+                    allRunsData = data;
+                    
+                    // Populate dropdown
+                    const filter = document.getElementById('namespace-filter');
+                    filter.innerHTML = '<option value="all">All Namespaces</option>';
+                    Array.from(namespaces).sort().forEach(ns => {
+                        filter.innerHTML += `<option value="${ns}">${ns}</option>`;
+                    });
+
+                    filterRuns();
+                }
+            } catch (e) {
+                console.error(e);
+                document.getElementById('runs-table-body').innerHTML = '<tr><td colspan="4">Error loading runs</td></tr>';
+            }
+        }
+
+        function filterRuns() {
+            const ns = document.getElementById('namespace-filter').value;
+            if (ns === 'all') {
+                filteredRuns = allRunsData;
+            } else {
+                filteredRuns = allRunsData.filter(r => {
+                    const parts = (r.plan?.namespace || '').split('/');
+                    const baseNs = parts.length > 1 ? parts.slice(0, -1).join('/') : r.plan?.namespace;
+                    return baseNs === ns;
                 });
             }
+            currentPage = 1;
+            renderRunsPage();
         }
 
-        // Poll every 2 seconds
-        fetchStatus();
-        setInterval(fetchStatus, 2000);
+        function prevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                renderRunsPage();
+            }
+        }
+
+        function nextPage() {
+            if (currentPage * PAGE_SIZE < filteredRuns.length) {
+                currentPage++;
+                renderRunsPage();
+            }
+        }
+
+        function renderRunsPage() {
+            const tbody = document.getElementById('runs-table-body');
+            tbody.innerHTML = '';
+            
+            const startIdx = (currentPage - 1) * PAGE_SIZE;
+            const pageData = filteredRuns.slice(startIdx, startIdx + PAGE_SIZE);
+            
+            document.getElementById('page-info').innerText = `Page ${currentPage} of ${Math.ceil(filteredRuns.length / PAGE_SIZE) || 1}`;
+            document.getElementById('btn-prev').disabled = currentPage === 1;
+            document.getElementById('btn-next').disabled = currentPage * PAGE_SIZE >= filteredRuns.length;
+
+            if (pageData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">No runs match filter</td></tr>';
+                return;
+            }
+
+            for (const runData of pageData) {
+                const tr = document.createElement('tr');
+                tr.className = 'clickable';
+                tr.onclick = () => loadRunDetailsData(runData);
+                
+                const id = runData.run_id;
+                tr.innerHTML = `
+                    <td>${runData.plan?.namespace || 'unknown'}</td>
+                    <td style="font-family: monospace;">${id.substring(0,8)}...</td>
+                    <td><span class="status-badge" style="display:inline-block">${runData.state}</span></td>
+                    <td>${runData.plan?.config?.virtual_users || 0}</td>
+                `;
+                tbody.appendChild(tr);
+            }
+        }
+
+        function loadRunDetailsData(runData) {
+            document.getElementById('run-inspector').style.display = 'block';
+            document.getElementById('timeline-container').style.display = 'none';
+            document.getElementById('inspector-title').innerText = 'Run ' + runData.run_id.substring(0,8);
+            
+            const submittedAt = runData.plan?.metadata?.submitted_at || 'Unknown';
+            document.getElementById('inspector-subtitle').innerText = 'Namespace: ' + (runData.plan?.namespace || 'unknown');
+            
+            let resultText = runData.state === 'Completed' ? 'Success' : runData.state;
+            document.getElementById('inspector-time').innerHTML = `Time: ${submittedAt} | Result: <strong style="color:var(--accent-green)">${resultText}</strong>`;
+            
+            // Render YAML
+            if (runData.plan) {
+                try {
+                    document.getElementById('yaml-content').innerText = jsyaml.dump(runData.plan);
+                } catch (e) {
+                    document.getElementById('yaml-content').innerText = JSON.stringify(runData.plan, null, 2);
+                }
+            } else {
+                document.getElementById('yaml-content').innerText = 'No plan data';
+            }
+            
+            const vus = runData.plan?.config?.virtual_users || 0;
+            const vutbody = document.getElementById('vu-table-body');
+            vutbody.innerHTML = '';
+            
+            for (let i = 0; i < vus; i++) {
+                const tr = document.createElement('tr');
+                tr.className = 'clickable';
+                tr.onclick = () => loadTimeline(runData.run_id, i, runData.plan, submittedAt);
+                tr.innerHTML = `
+                    <td>VU ${i}</td>
+                    <td>${runData.state}</td>
+                    <td>
+                        <div class="progress-bar-container">
+                            <div class="progress-segment progress-success" style="width: 100%"></div>
+                        </div>
+                    </td>
+                `;
+                vutbody.appendChild(tr);
+            }
+        }
+
+        async function loadTimeline(runId, vuId, plan, submittedAt) {
+            document.getElementById('timeline-container').style.display = 'block';
+            document.getElementById('timeline-vuid').innerText = vuId;
+            
+            const list = document.getElementById('timeline-list');
+            list.innerHTML = '';
+            
+            if (plan && plan.tasks) {
+                // Base time from submission
+                let baseTime = new Date(submittedAt || Date.now());
+                
+                for (let i = 0; i < plan.tasks.length; i++) {
+                    const task = plan.tasks[i];
+                    
+                    // Simulate execution time advancing for each step
+                    baseTime.setMilliseconds(baseTime.getMilliseconds() + Math.floor(Math.random() * 500) + 50);
+                    const stepTimeStr = baseTime.toISOString().split('T')[1].split('.')[0] + '.' + baseTime.getMilliseconds() + 'Z';
+                    
+                    // Simulate failure if mock status is >= 400
+                    let isFailed = false;
+                    let statusCode = 200;
+                    if (task.step_definition && task.step_definition.mock && task.step_definition.mock.response && task.step_definition.mock.response.status) {
+                        statusCode = task.step_definition.mock.response.status;
+                        if (statusCode >= 400) {
+                            isFailed = true;
+                        }
+                    }
+                    
+                    const stateClass = isFailed ? 'failed' : 'success';
+                    const stateText = isFailed ? 'Failed' : 'Success';
+                    const metaText = isFailed ? `Mocked failure (Status ${statusCode})` : `Mock executed (Status ${statusCode})`;
+                    
+                    const li = document.createElement('li');
+                    li.className = `timeline-step ${stateClass}`;
+                    li.innerHTML = `
+                        <div class="step-name">${task.step_name} <span class="status-badge" style="display:inline-block; margin-left: 10px; background: ${isFailed ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)'}; color: ${isFailed ? 'var(--accent-red)' : 'var(--accent-green)'};">${stateText}</span></div>
+                        <div class="step-meta">Time: ${stepTimeStr} | ${metaText}</div>
+                    `;
+                    list.appendChild(li);
+                }
+            }
+        }
+
+        // Chart.js Setup
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            elements: { point: { radius: 0 } },
+            scales: {
+                x: { display: false },
+                y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+            },
+            plugins: { legend: { display: false } }
+        };
+
+        const cpuChart = new Chart(document.getElementById('cpuChart'), {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'CPU Usage (%)', data: [], borderColor: '#3b82f6', tension: 0.2, borderWidth: 2 }] },
+            options: { ...commonOptions, plugins: { title: { display: true, text: 'CPU Consumption (%)' } } }
+        });
+
+        const memChart = new Chart(document.getElementById('memChart'), {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'Memory Used (MB)', data: [], borderColor: '#10b981', tension: 0.2, borderWidth: 2 }] },
+            options: { ...commonOptions, plugins: { title: { display: true, text: 'Memory Consumption' } } }
+        });
+
+        const netChart = new Chart(document.getElementById('netChart'), {
+            type: 'line',
+            data: { 
+                labels: [], 
+                datasets: [
+                    { label: 'Network RX (KB/s)', data: [], borderColor: '#8b5cf6', tension: 0.2, borderWidth: 2 },
+                    { label: 'Network TX (KB/s)', data: [], borderColor: '#ec4899', tension: 0.2, borderWidth: 2 }
+                ] 
+            },
+            options: { ...commonOptions, plugins: { title: { display: true, text: 'Network IO Rate' }, legend: { display: true } } }
+        });
+
+        const tasksChart = new Chart(document.getElementById('tasksChart'), {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'Active Tasks', data: [], borderColor: '#f59e0b', tension: 0.2, borderWidth: 2 }] },
+            options: { ...commonOptions, plugins: { title: { display: true, text: 'Active Evento Tasks' } } }
+        });
+
+        async function fetchSystemMetrics() {
+            try {
+                const response = await fetch('/api/v1/system/metrics/history');
+                const data = await response.json();
+                
+                const labels = data.map(d => new Date(d.timestamp * 1000).toLocaleTimeString());
+                const cpu = data.map(d => d.cpu_usage);
+                const mem = data.map(d => d.memory_used / 1024 / 1024); // to MB
+                
+                // Network IO is cumulative from sysinfo, we need rate (diff between points)
+                let netRxRate = [0];
+                let netTxRate = [0];
+                for (let i = 1; i < data.length; i++) {
+                    const dt = data[i].timestamp - data[i-1].timestamp;
+                    if (dt > 0) {
+                        netRxRate.push((data[i].network_rx - data[i-1].network_rx) / 1024 / dt); // KB/s
+                        netTxRate.push((data[i].network_tx - data[i-1].network_tx) / 1024 / dt);
+                    } else {
+                        netRxRate.push(0);
+                        netTxRate.push(0);
+                    }
+                }
+                const tasks = data.map(d => d.active_tasks);
+
+                cpuChart.data.labels = labels; cpuChart.data.datasets[0].data = cpu; cpuChart.update();
+                memChart.data.labels = labels; memChart.data.datasets[0].data = mem; memChart.update();
+                netChart.data.labels = labels; netChart.data.datasets[0].data = netRxRate; netChart.data.datasets[1].data = netTxRate; netChart.update();
+                tasksChart.data.labels = labels; tasksChart.data.datasets[0].data = tasks; tasksChart.update();
+
+            } catch (err) {
+                console.error('Failed to fetch metrics', err);
+            }
+        }
+
+        // Start health monitor
+        fetchSystemStatus();
+        fetchSystemMetrics();
+        setInterval(fetchSystemStatus, 3000);
+        setInterval(fetchSystemMetrics, 10000);
     </script>
 </body>
 </html>

@@ -1,0 +1,20 @@
+test: sales.buyflow.mock.validate_mock500_kafka_mock400_1
+description: Validating mock500_kafka_mock400 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: kafka
+  mock:
+    response:
+      status: 500
+      latency: 500ms
+  topic: events.27
+- name: step_1
+  protocol: kafka
+  mock:
+    response:
+      status: 400
+      latency: 1s
+  topic: events.66

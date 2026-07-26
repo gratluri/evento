@@ -1,0 +1,38 @@
+test: analytics.tracking.mock.validate_async_database_mock201_87
+description: Validating async_database_mock201 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: kafka
+  mock:
+    response:
+      status: 201
+      latency: 50ms
+  topic: events.36
+- name: step_1
+  protocol: kafka
+  mock:
+    response:
+      status: 401
+      latency: 100ms
+  async: true
+  topic: events.3
+- name: step_2
+  protocol: database
+  mock:
+    response:
+      status: 404
+      latency: 500ms
+  query: SELECT * FROM table_9
+- name: step_3
+  protocol: kafka
+  mock:
+    response:
+      status: 403
+      latency: 500ms
+  async: true
+  wait_for:
+  - step_0
+  topic: events.50

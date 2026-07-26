@@ -1,11 +1,19 @@
 use actix_web::{test, web, App};
 use evento::admin::server::{configure_admin_routes, AppState, SystemStatus};
+use evento::engine::storage::sled_store::SledStore;
+use evento::engine::config::StorageConfig;
 use std::sync::Arc;
+use tempfile::tempdir;
 use tokio::sync::RwLock;
 use scraper::{Html, Selector};
 use serde_json::Value;
 
 fn create_mock_state() -> web::Data<AppState> {
+    let temp = tempdir().unwrap();
+    let mut config = StorageConfig::default();
+    config.data_dir = temp.path().to_path_buf();
+    let sled_store = Arc::new(SledStore::new(&config).unwrap());
+
     web::Data::new(AppState {
         status: Arc::new(RwLock::new(SystemStatus {
             evento_core: "Active".to_string(),
@@ -14,6 +22,7 @@ fn create_mock_state() -> web::Data<AppState> {
             mcp_server: "Green".to_string(),
             uptime_seconds: 42,
         })),
+        sled: sled_store,
     })
 }
 
@@ -40,13 +49,15 @@ async fn test_admin_ui_html_components() {
     let evento_card_selector = Selector::parse("#card-evento").unwrap();
     let sled_card_selector = Selector::parse("#card-sled").unwrap();
     let postgres_card_selector = Selector::parse("#card-postgres").unwrap();
-    let mcp_card_selector = Selector::parse("#card-mcp").unwrap();
+    let runs_section_selector = Selector::parse("#runs").unwrap();
+    let inspector_selector = Selector::parse("#run-inspector").unwrap();
     
     // 7. Assert that all critical UI components exist in the DOM
     assert!(document.select(&evento_card_selector).next().is_some(), "Evento card missing from UI");
     assert!(document.select(&sled_card_selector).next().is_some(), "Sled card missing from UI");
     assert!(document.select(&postgres_card_selector).next().is_some(), "Postgres card missing from UI");
-    assert!(document.select(&mcp_card_selector).next().is_some(), "MCP card missing from UI");
+    assert!(document.select(&runs_section_selector).next().is_some(), "Runs section missing from UI");
+    assert!(document.select(&inspector_selector).next().is_some(), "Run inspector missing from UI");
 }
 
 #[actix_web::test]

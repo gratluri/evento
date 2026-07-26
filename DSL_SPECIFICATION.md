@@ -50,7 +50,7 @@ All eDSL documents MUST be valid YAML. Documents SHOULD use the `.yaml` or `.yml
 
 An eDSL document is structured around several distinct top-level keys. A complete test definition MUST contain either a `test` identifier and a `scenario` definition, or an `imports` instruction that pulls in a scenario.
 
-*   `test` (string, REQUIRED): The unique identifier for the test suite.
+*   `test` (string, REQUIRED): The unique identifier for the test suite. It MUST follow a dot-separated namespace convention (e.g., `sales.buyflow.add-a-line`). The execution engine uses this to auto-derive a hierarchical namespace (e.g., `sales/buyflow/add-a-line`) for organizing results and metrics.
 *   `description` (string, OPTIONAL): A human-readable summary of the test.
 *   `imports` (list of strings, OPTIONAL): References to external modules, subflows, or scripts.
 *   `config` (object, OPTIONAL): Execution configuration (see Section 3).

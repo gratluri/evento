@@ -1,0 +1,49 @@
+test: sales.buyflow.mock.validate_database_mock201_mock403_31
+description: Validating database_mock201_mock403 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: database
+  mock:
+    response:
+      status: 403
+      latency: ${$random.int(10,100)}ms
+  query: SELECT * FROM table_3
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 201
+      latency: 100ms
+  wait_for:
+  - step_0
+  query: SELECT * FROM table_4
+- name: step_2
+  protocol: database
+  mock:
+    response:
+      status: 502
+      latency: 1s
+  wait_for:
+  - step_0
+  query: SELECT * FROM table_10
+- name: step_3
+  protocol: database
+  mock:
+    response:
+      status: 502
+      latency: 100ms
+  wait_for:
+  - step_2
+  query: SELECT * FROM table_3
+- name: step_4
+  protocol: kafka
+  mock:
+    response:
+      status: 404
+      latency: ${$random.int(10,100)}ms
+  wait_for:
+  - step_3
+  topic: events.100

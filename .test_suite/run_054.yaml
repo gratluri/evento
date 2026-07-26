@@ -1,0 +1,66 @@
+test: sales.buyflow.mock.validate_async_mock503_http_54
+description: Validating async_mock503_http behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: kafka
+  mock:
+    response:
+      status: 201
+      latency: 500ms
+  topic: events.89
+- name: step_1
+  protocol: http
+  mock:
+    response:
+      status: 403
+      latency: ${$random.int(10,100)}ms
+  wait_for:
+  - step_0
+  endpoint: /api/v1/resource/811
+  method: POST
+- name: step_2
+  protocol: kafka
+  mock:
+    response:
+      status: 202
+      latency: 1s
+  wait_for:
+  - step_1
+  topic: events.97
+- name: step_3
+  protocol: kafka
+  mock:
+    response:
+      status: 503
+      latency: ${$random.int(10,100)}ms
+  wait_for:
+  - step_2
+  topic: events.77
+- name: step_4
+  protocol: kafka
+  mock:
+    response:
+      status: 403
+      latency: 10ms
+  topic: events.11
+- name: step_5
+  protocol: kafka
+  mock:
+    response:
+      status: 503
+      latency: 1s
+  topic: events.66
+- name: step_6
+  protocol: http
+  mock:
+    response:
+      status: 503
+      latency: 1s
+  async: true
+  wait_for:
+  - step_4
+  endpoint: /api/v1/resource/350
+  method: DELETE

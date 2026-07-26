@@ -1,0 +1,89 @@
+test: sales.buyflow.mock.validate_async_kafka_http_100
+description: Validating async_kafka_http behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: http
+  mock:
+    response:
+      status: 503
+      latency: 200ms
+  endpoint: /api/v1/resource/645
+  method: DELETE
+- name: step_1
+  protocol: kafka
+  mock:
+    response:
+      status: 404
+      latency: 50ms
+  async: true
+  topic: events.30
+- name: step_2
+  protocol: database
+  mock:
+    response:
+      status: 404
+      latency: ${$random.int(10,100)}ms
+  query: SELECT * FROM table_8
+- name: step_3
+  protocol: database
+  mock:
+    response:
+      status: 202
+      latency: ${$random.int(10,100)}ms
+  query: SELECT * FROM table_2
+- name: step_4
+  protocol: kafka
+  mock:
+    response:
+      status: 400
+      latency: 500ms
+  wait_for:
+  - step_0
+  topic: events.11
+- name: step_5
+  protocol: kafka
+  mock:
+    response:
+      status: 204
+      latency: 1s
+  async: true
+  wait_for:
+  - step_4
+  topic: events.64
+- name: step_6
+  protocol: http
+  mock:
+    response:
+      status: 503
+      latency: 500ms
+  endpoint: /api/v1/resource/816
+  method: POST
+- name: step_7
+  protocol: database
+  mock:
+    response:
+      status: 503
+      latency: 10ms
+  async: true
+  query: SELECT * FROM table_2
+- name: step_8
+  protocol: kafka
+  mock:
+    response:
+      status: 401
+      latency: 500ms
+  wait_for:
+  - step_3
+  topic: events.92
+- name: step_9
+  protocol: http
+  mock:
+    response:
+      status: 500
+      latency: 500ms
+  async: true
+  endpoint: /api/v1/resource/389
+  method: DELETE

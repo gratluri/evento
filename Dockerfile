@@ -26,7 +26,8 @@ COPY --from=builder /app/target/release/evento /usr/local/bin/evento
 RUN mkdir -p /root/.evento/data
 VOLUME /root/.evento/data
 
-# Expose the Admin UI port
-EXPOSE 8080
+# Expose the Admin UI port and Simulator port
+EXPOSE 8080 8081
 
 ENTRYPOINT ["evento"]
+CMD ["server", "--port", "8080"]

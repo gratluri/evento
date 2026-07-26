@@ -1,0 +1,52 @@
+test: infra.health.mock.validate_kafka_mock202_database_10
+description: Validating kafka_mock202_database behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: database
+  mock:
+    response:
+      status: 404
+      latency: 200ms
+  query: SELECT * FROM table_4
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 202
+      latency: 50ms
+  query: SELECT * FROM table_4
+- name: step_2
+  protocol: database
+  mock:
+    response:
+      status: 503
+      latency: ${$random.int(10,100)}ms
+  wait_for:
+  - step_1
+  query: SELECT * FROM table_8
+- name: step_3
+  protocol: database
+  mock:
+    response:
+      status: 201
+      latency: 1s
+  wait_for:
+  - step_1
+  query: SELECT * FROM table_9
+- name: step_4
+  protocol: kafka
+  mock:
+    response:
+      status: 502
+      latency: 1s
+  topic: events.23
+- name: step_5
+  protocol: kafka
+  mock:
+    response:
+      status: 500
+      latency: 50ms
+  topic: events.9

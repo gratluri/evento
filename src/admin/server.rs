@@ -16,8 +16,24 @@ pub struct SystemStatus {
     pub uptime_seconds: u64,
 }
 
+use crate::engine::storage::sled_store::SledStore;
+use std::collections::VecDeque;
+
+#[derive(Serialize, Clone)]
+pub struct SystemMetricSnapshot {
+    pub timestamp: u64,
+    pub cpu_usage: f32,
+    pub memory_used: u64,
+    pub memory_total: u64,
+    pub network_rx: u64,
+    pub network_tx: u64,
+    pub active_tasks: usize,
+}
+
 pub struct AppState {
     pub status: Arc<RwLock<SystemStatus>>,
+    pub metrics_history: Arc<RwLock<VecDeque<SystemMetricSnapshot>>>,
+    pub sled: Arc<SledStore>,
 }
 
 #[get("/api/status")]
@@ -35,6 +51,8 @@ async fn index() -> impl Responder {
 pub fn configure_admin_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(index)
        .service(status);
+       
+    crate::admin::api::configure_api_routes(cfg);
 }
 
 pub async fn start_admin_server(port: u16, config: StorageConfig) -> Result<()> {
@@ -48,8 +66,23 @@ pub async fn start_admin_server(port: u16, config: StorageConfig) -> Result<()> 
         uptime_seconds: 0,
     }));
     
+    let sled_store = Arc::new(SledStore::new(&config)?);
+    
+    // Spawn Simulator Server
+    let sim_store = sled_store.clone();
+    let sim_port = port + 1;
+    tokio::spawn(async move {
+        if let Err(e) = crate::simulator::server::run_simulator(sim_port, sim_store).await {
+            tracing::error!("Simulator server failed: {}", e);
+        }
+    });
+    
+    let metrics_history = Arc::new(RwLock::new(VecDeque::with_capacity(720)));
+    
     let app_state = web::Data::new(AppState {
         status: shared_status.clone(),
+        metrics_history: metrics_history.clone(),
+        sled: sled_store.clone(),
     });
     
     // Spawn Background Health Monitor
@@ -88,6 +121,59 @@ pub async fn start_admin_server(port: u16, config: StorageConfig) -> Result<()> 
             write_lock.uptime_seconds = uptime;
             write_lock.sled_store = sled_status;
             write_lock.postgres_store = pg_status;
+        }
+    });
+
+    let monitor_metrics = metrics_history.clone();
+    let monitor_store = sled_store.clone();
+    tokio::spawn(async move {
+        let mut sys = sysinfo::System::new_all();
+        let mut networks = sysinfo::Networks::new_with_refreshed_list();
+        let mut interval = tokio::time::interval(Duration::from_secs(10));
+        
+        loop {
+            interval.tick().await;
+            
+            sys.refresh_cpu_usage();
+            sys.refresh_memory();
+            networks.refresh();
+            
+            let cpu_usage = sys.global_cpu_info().cpu_usage();
+            let memory_used = sys.used_memory();
+            let memory_total = sys.total_memory();
+            
+            let mut network_rx = 0;
+            let mut network_tx = 0;
+            for (_interface_name, data) in &networks {
+                network_rx += data.received();
+                network_tx += data.transmitted();
+            }
+            
+            // Calculate truly active tasks (tests currently in "Running" state)
+            let mut active_tasks = 0;
+            if let Ok(runs) = monitor_store.list_runs() {
+                for run_id in runs {
+                    if let Ok(Some(state)) = monitor_store.get_run_state(&run_id) {
+                        if state.contains("Running") {
+                            active_tasks += 1;
+                        }
+                    }
+                }
+            }
+
+            let mut metrics_lock = monitor_metrics.write().await;
+            if metrics_lock.len() >= 720 {
+                metrics_lock.pop_front();
+            }
+            metrics_lock.push_back(SystemMetricSnapshot {
+                timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                cpu_usage,
+                memory_used,
+                memory_total,
+                network_rx,
+                network_tx,
+                active_tasks,
+            });
         }
     });
 

@@ -1,0 +1,39 @@
+test: analytics.tracking.mock.validate_async_http_mock200_24
+description: Validating async_http_mock200 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: kafka
+  mock:
+    response:
+      status: 204
+      latency: 500ms
+  topic: events.3
+- name: step_1
+  protocol: kafka
+  mock:
+    response:
+      status: 201
+      latency: 50ms
+  async: true
+  topic: events.43
+- name: step_2
+  protocol: http
+  mock:
+    response:
+      status: 200
+      latency: 10ms
+  wait_for:
+  - step_1
+  endpoint: /api/v1/resource/650
+  method: GET
+- name: step_3
+  protocol: kafka
+  mock:
+    response:
+      status: 202
+      latency: 100ms
+  async: true
+  topic: events.44

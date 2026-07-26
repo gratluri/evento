@@ -1,0 +1,45 @@
+test: infra.health.mock.validate_mock503_http_sync_88
+description: Validating mock503_http_sync behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: http
+  mock:
+    response:
+      status: 503
+      latency: 1s
+  endpoint: /api/v1/resource/145
+  method: POST
+- name: step_1
+  protocol: kafka
+  mock:
+    response:
+      status: 401
+      latency: 1s
+  topic: events.24
+- name: step_2
+  protocol: http
+  mock:
+    response:
+      status: 404
+      latency: 100ms
+  endpoint: /api/v1/resource/805
+  method: PUT
+- name: step_3
+  protocol: kafka
+  mock:
+    response:
+      status: 204
+      latency: 500ms
+  topic: events.79
+- name: step_4
+  protocol: kafka
+  mock:
+    response:
+      status: 500
+      latency: 200ms
+  wait_for:
+  - step_0
+  topic: events.64

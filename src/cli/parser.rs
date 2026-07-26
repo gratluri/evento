@@ -21,5 +21,11 @@ pub enum Commands {
         /// Port to run the MCP server on
         #[arg(short, long, default_value_t = 8080)]
         port: u16,
+    },
+    /// Start the Evento Server (Admin UI, REST API)
+    Server {
+        /// Port to run the server on
+        #[arg(short, long, default_value_t = 8080)]
+        port: u16,
     }
 }

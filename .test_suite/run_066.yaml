@@ -1,0 +1,24 @@
+test: sales.buyflow.mock.validate_mock201_sync_http_66
+description: Validating mock201_sync_http behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: http
+  mock:
+    response:
+      status: 201
+      latency: 500ms
+  endpoint: /api/v1/resource/731
+  method: PUT
+- name: step_1
+  protocol: http
+  mock:
+    response:
+      status: 404
+      latency: 100ms
+  wait_for:
+  - step_0
+  endpoint: /api/v1/resource/173
+  method: PUT

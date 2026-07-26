@@ -1,0 +1,39 @@
+test: infra.health.mock.validate_async_database_mock201_37
+description: Validating async_database_mock201 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: kafka
+  mock:
+    response:
+      status: 502
+      latency: 10ms
+  topic: events.52
+- name: step_1
+  protocol: kafka
+  mock:
+    response:
+      status: 201
+      latency: ${$random.int(10,100)}ms
+  wait_for:
+  - step_0
+  topic: events.73
+- name: step_2
+  protocol: database
+  mock:
+    response:
+      status: 404
+      latency: 50ms
+  async: true
+  query: SELECT * FROM table_6
+- name: step_3
+  protocol: database
+  mock:
+    response:
+      status: 400
+      latency: ${$random.int(10,100)}ms
+  wait_for:
+  - step_2
+  query: SELECT * FROM table_10

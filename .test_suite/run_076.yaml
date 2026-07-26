@@ -1,0 +1,46 @@
+test: infra.health.mock.validate_async_http_database_76
+description: Validating async_http_database behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: http
+  mock:
+    response:
+      status: 400
+      latency: 1s
+  endpoint: /api/v1/resource/925
+  method: DELETE
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 400
+      latency: ${$random.int(10,100)}ms
+  async: true
+  query: SELECT * FROM table_1
+- name: step_2
+  protocol: http
+  mock:
+    response:
+      status: 403
+      latency: 50ms
+  endpoint: /api/v1/resource/889
+  method: PUT
+- name: step_3
+  protocol: kafka
+  mock:
+    response:
+      status: 500
+      latency: 1s
+  topic: events.60
+- name: step_4
+  protocol: database
+  mock:
+    response:
+      status: 502
+      latency: ${$random.int(10,100)}ms
+  wait_for:
+  - step_2
+  query: SELECT * FROM table_4

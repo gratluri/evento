@@ -1,0 +1,88 @@
+test: sales.buyflow.mock.validate_http_mock200_database_2
+description: Validating http_mock200_database behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: http
+  mock:
+    response:
+      status: 400
+      latency: 500ms
+  endpoint: /api/v1/resource/964
+  method: PUT
+- name: step_1
+  protocol: http
+  mock:
+    response:
+      status: 500
+      latency: 100ms
+  wait_for:
+  - step_0
+  endpoint: /api/v1/resource/786
+  method: GET
+- name: step_2
+  protocol: database
+  mock:
+    response:
+      status: 403
+      latency: 200ms
+  wait_for:
+  - step_1
+  query: SELECT * FROM table_5
+- name: step_3
+  protocol: http
+  mock:
+    response:
+      status: 400
+      latency: 100ms
+  wait_for:
+  - step_0
+  endpoint: /api/v1/resource/744
+  method: POST
+- name: step_4
+  protocol: database
+  mock:
+    response:
+      status: 404
+      latency: 50ms
+  query: SELECT * FROM table_6
+- name: step_5
+  protocol: database
+  mock:
+    response:
+      status: 200
+      latency: ${$random.int(10,100)}ms
+  query: SELECT * FROM table_7
+- name: step_6
+  protocol: http
+  mock:
+    response:
+      status: 400
+      latency: 200ms
+  endpoint: /api/v1/resource/47
+  method: POST
+- name: step_7
+  protocol: database
+  mock:
+    response:
+      status: 500
+      latency: 1s
+  query: SELECT * FROM table_9
+- name: step_8
+  protocol: database
+  mock:
+    response:
+      status: 400
+      latency: 10ms
+  query: SELECT * FROM table_2
+- name: step_9
+  protocol: database
+  mock:
+    response:
+      status: 200
+      latency: 200ms
+  wait_for:
+  - step_1
+  query: SELECT * FROM table_5

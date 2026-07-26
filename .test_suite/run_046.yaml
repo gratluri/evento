@@ -1,0 +1,82 @@
+test: analytics.tracking.mock.validate_async_http_mock202_46
+description: Validating async_http_mock202 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: http
+  mock:
+    response:
+      status: 403
+      latency: 100ms
+  endpoint: /api/v1/resource/221
+  method: DELETE
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 204
+      latency: 100ms
+  async: true
+  wait_for:
+  - step_0
+  query: SELECT * FROM table_9
+- name: step_2
+  protocol: database
+  mock:
+    response:
+      status: 202
+      latency: ${$random.int(10,100)}ms
+  query: SELECT * FROM table_8
+- name: step_3
+  protocol: http
+  mock:
+    response:
+      status: 200
+      latency: 500ms
+  endpoint: /api/v1/resource/594
+  method: PUT
+- name: step_4
+  protocol: http
+  mock:
+    response:
+      status: 502
+      latency: 10ms
+  async: true
+  endpoint: /api/v1/resource/168
+  method: PUT
+- name: step_5
+  protocol: database
+  mock:
+    response:
+      status: 500
+      latency: ${$random.int(10,100)}ms
+  async: true
+  query: SELECT * FROM table_7
+- name: step_6
+  protocol: database
+  mock:
+    response:
+      status: 502
+      latency: 500ms
+  wait_for:
+  - step_1
+  query: SELECT * FROM table_1
+- name: step_7
+  protocol: http
+  mock:
+    response:
+      status: 400
+      latency: ${$random.int(10,100)}ms
+  wait_for:
+  - step_4
+  endpoint: /api/v1/resource/106
+  method: POST
+- name: step_8
+  protocol: database
+  mock:
+    response:
+      status: 503
+      latency: ${$random.int(10,100)}ms
+  query: SELECT * FROM table_5

@@ -1,0 +1,39 @@
+test: analytics.tracking.mock.validate_http_database_mock403_17
+description: Validating http_database_mock403 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: database
+  mock:
+    response:
+      status: 404
+      latency: 200ms
+  query: SELECT * FROM table_2
+- name: step_1
+  protocol: http
+  mock:
+    response:
+      status: 403
+      latency: ${$random.int(10,100)}ms
+  endpoint: /api/v1/resource/653
+  method: GET
+- name: step_2
+  protocol: http
+  mock:
+    response:
+      status: 404
+      latency: 1s
+  wait_for:
+  - step_1
+  endpoint: /api/v1/resource/968
+  method: PUT
+- name: step_3
+  protocol: http
+  mock:
+    response:
+      status: 503
+      latency: 200ms
+  endpoint: /api/v1/resource/178
+  method: PUT

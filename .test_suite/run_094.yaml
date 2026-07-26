@@ -1,0 +1,15 @@
+test: sales.buyflow.mock.validate_async_http_mock401_94
+description: Validating async_http_mock401 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: http
+  mock:
+    response:
+      status: 401
+      latency: 10ms
+  async: true
+  endpoint: /api/v1/resource/635
+  method: PUT

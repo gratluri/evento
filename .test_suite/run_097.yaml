@@ -1,0 +1,45 @@
+test: sales.buyflow.mock.validate_kafka_http_mock200_97
+description: Validating kafka_http_mock200 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: kafka
+  mock:
+    response:
+      status: 200
+      latency: 10ms
+  topic: events.82
+- name: step_1
+  protocol: http
+  mock:
+    response:
+      status: 503
+      latency: 10ms
+  endpoint: /api/v1/resource/528
+  method: PUT
+- name: step_2
+  protocol: http
+  mock:
+    response:
+      status: 502
+      latency: ${$random.int(10,100)}ms
+  endpoint: /api/v1/resource/968
+  method: GET
+- name: step_3
+  protocol: http
+  mock:
+    response:
+      status: 201
+      latency: ${$random.int(10,100)}ms
+  endpoint: /api/v1/resource/87
+  method: DELETE
+- name: step_4
+  protocol: http
+  mock:
+    response:
+      status: 401
+      latency: 500ms
+  endpoint: /api/v1/resource/392
+  method: GET

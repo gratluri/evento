@@ -1,0 +1,21 @@
+test: analytics.tracking.mock.validate_mock404_mock500_http_33
+description: Validating mock404_mock500_http behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: http
+  mock:
+    response:
+      status: 404
+      latency: 500ms
+  endpoint: /api/v1/resource/405
+  method: GET
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 500
+      latency: ${$random.int(10,100)}ms
+  query: SELECT * FROM table_6

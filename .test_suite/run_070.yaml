@@ -1,0 +1,28 @@
+test: sales.buyflow.mock.validate_async_mock202_mock200_70
+description: Validating async_mock202_mock200 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: database
+  mock:
+    response:
+      status: 200
+      latency: 10ms
+  async: true
+  query: SELECT * FROM table_5
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 202
+      latency: 100ms
+  query: SELECT * FROM table_9
+- name: step_2
+  protocol: kafka
+  mock:
+    response:
+      status: 201
+      latency: 200ms
+  topic: events.96

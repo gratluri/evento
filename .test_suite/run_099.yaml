@@ -1,0 +1,31 @@
+test: analytics.tracking.mock.validate_async_database_mock201_99
+description: Validating async_database_mock201 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: database
+  mock:
+    response:
+      status: 502
+      latency: 50ms
+  query: SELECT * FROM table_9
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 400
+      latency: 50ms
+  async: true
+  wait_for:
+  - step_0
+  query: SELECT * FROM table_6
+- name: step_2
+  protocol: database
+  mock:
+    response:
+      status: 201
+      latency: 1s
+  async: true
+  query: SELECT * FROM table_8

@@ -1,0 +1,45 @@
+test: infra.health.mock.validate_async_mock503_http_18
+description: Validating async_mock503_http behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: database
+  mock:
+    response:
+      status: 503
+      latency: 10ms
+  query: SELECT * FROM table_4
+- name: step_1
+  protocol: kafka
+  mock:
+    response:
+      status: 503
+      latency: 10ms
+  topic: events.85
+- name: step_2
+  protocol: database
+  mock:
+    response:
+      status: 503
+      latency: 1s
+  query: SELECT * FROM table_8
+- name: step_3
+  protocol: http
+  mock:
+    response:
+      status: 403
+      latency: 200ms
+  endpoint: /api/v1/resource/294
+  method: GET
+- name: step_4
+  protocol: database
+  mock:
+    response:
+      status: 502
+      latency: 500ms
+  async: true
+  wait_for:
+  - step_2
+  query: SELECT * FROM table_3

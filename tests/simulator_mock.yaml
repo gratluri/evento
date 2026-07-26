@@ -1,0 +1,14 @@
+test: test.simulator
+config:
+  virtual_users: 1
+scenario:
+  - name: test_endpoint
+    protocol: http
+    method: POST
+    endpoint: /api/simulate
+    mock:
+      response:
+        status: 201
+        latency: 500ms
+        body:
+          message: "Hello from Simulator!"

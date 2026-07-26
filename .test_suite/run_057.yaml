@@ -1,0 +1,20 @@
+test: sales.buyflow.mock.validate_mock204_database_mock502_57
+description: Validating mock204_database_mock502 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: database
+  mock:
+    response:
+      status: 502
+      latency: 500ms
+  query: SELECT * FROM table_10
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 204
+      latency: 10ms
+  query: SELECT * FROM table_10

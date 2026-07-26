@@ -1,0 +1,59 @@
+test: sales.buyflow.mock.validate_mock503_mock202_mock200_91
+description: Validating mock503_mock202_mock200 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: database
+  mock:
+    response:
+      status: 404
+      latency: 200ms
+  query: SELECT * FROM table_3
+- name: step_1
+  protocol: kafka
+  mock:
+    response:
+      status: 202
+      latency: ${$random.int(10,100)}ms
+  topic: events.56
+- name: step_2
+  protocol: kafka
+  mock:
+    response:
+      status: 200
+      latency: 200ms
+  wait_for:
+  - step_1
+  topic: events.74
+- name: step_3
+  protocol: http
+  mock:
+    response:
+      status: 401
+      latency: ${$random.int(10,100)}ms
+  endpoint: /api/v1/resource/844
+  method: DELETE
+- name: step_4
+  protocol: http
+  mock:
+    response:
+      status: 204
+      latency: 50ms
+  endpoint: /api/v1/resource/708
+  method: PUT
+- name: step_5
+  protocol: database
+  mock:
+    response:
+      status: 503
+      latency: 500ms
+  query: SELECT * FROM table_5
+- name: step_6
+  protocol: kafka
+  mock:
+    response:
+      status: 503
+      latency: 500ms
+  topic: events.14

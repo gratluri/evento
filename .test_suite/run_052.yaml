@@ -1,0 +1,49 @@
+test: analytics.tracking.mock.validate_http_mock200_database_52
+description: Validating http_mock200_database behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: kafka
+  mock:
+    response:
+      status: 204
+      latency: 50ms
+  topic: events.51
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 404
+      latency: 200ms
+  query: SELECT * FROM table_10
+- name: step_2
+  protocol: kafka
+  mock:
+    response:
+      status: 204
+      latency: 200ms
+  topic: events.62
+- name: step_3
+  protocol: http
+  mock:
+    response:
+      status: 502
+      latency: 50ms
+  endpoint: /api/v1/resource/184
+  method: POST
+- name: step_4
+  protocol: kafka
+  mock:
+    response:
+      status: 401
+      latency: 100ms
+  topic: events.86
+- name: step_5
+  protocol: kafka
+  mock:
+    response:
+      status: 200
+      latency: 50ms
+  topic: events.98

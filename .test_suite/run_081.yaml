@@ -1,0 +1,80 @@
+test: analytics.tracking.mock.validate_async_http_database_81
+description: Validating async_http_database behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: database
+  mock:
+    response:
+      status: 400
+      latency: 200ms
+  query: SELECT * FROM table_2
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 400
+      latency: 50ms
+  wait_for:
+  - step_0
+  query: SELECT * FROM table_3
+- name: step_2
+  protocol: http
+  mock:
+    response:
+      status: 502
+      latency: ${$random.int(10,100)}ms
+  async: true
+  endpoint: /api/v1/resource/247
+  method: POST
+- name: step_3
+  protocol: database
+  mock:
+    response:
+      status: 401
+      latency: 10ms
+  query: SELECT * FROM table_1
+- name: step_4
+  protocol: database
+  mock:
+    response:
+      status: 503
+      latency: 200ms
+  query: SELECT * FROM table_1
+- name: step_5
+  protocol: database
+  mock:
+    response:
+      status: 400
+      latency: 200ms
+  async: true
+  query: SELECT * FROM table_1
+- name: step_6
+  protocol: http
+  mock:
+    response:
+      status: 403
+      latency: 500ms
+  async: true
+  endpoint: /api/v1/resource/59
+  method: POST
+- name: step_7
+  protocol: http
+  mock:
+    response:
+      status: 403
+      latency: 200ms
+  endpoint: /api/v1/resource/479
+  method: PUT
+- name: step_8
+  protocol: http
+  mock:
+    response:
+      status: 500
+      latency: 100ms
+  wait_for:
+  - step_1
+  endpoint: /api/v1/resource/18
+  method: POST

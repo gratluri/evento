@@ -1,0 +1,13 @@
+test: analytics.tracking.mock.validate_mock204_database_28
+description: Validating mock204_database behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: database
+  mock:
+    response:
+      status: 204
+      latency: 100ms
+  query: SELECT * FROM table_1

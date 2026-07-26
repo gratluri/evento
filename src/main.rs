@@ -10,6 +10,8 @@ pub mod engine;
 pub mod mcp;
 pub mod metrics;
 pub mod protocols;
+pub mod admin;
+pub mod simulator;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -28,6 +30,10 @@ async fn main() -> Result<()> {
         Commands::Mcp { port } => {
             let server = McpServer::new(*port);
             server.start().await?;
+        }
+        Commands::Server { port } => {
+            let config = engine::config::StorageConfig::default();
+            admin::server::start_admin_server(*port, config).await?;
         }
     }
 

@@ -1,0 +1,70 @@
+test: analytics.tracking.mock.validate_async_mock503_http_69
+description: Validating async_mock503_http behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: http
+  mock:
+    response:
+      status: 204
+      latency: ${$random.int(10,100)}ms
+  endpoint: /api/v1/resource/741
+  method: GET
+- name: step_1
+  protocol: kafka
+  mock:
+    response:
+      status: 503
+      latency: ${$random.int(10,100)}ms
+  async: true
+  wait_for:
+  - step_0
+  topic: events.24
+- name: step_2
+  protocol: database
+  mock:
+    response:
+      status: 200
+      latency: ${$random.int(10,100)}ms
+  query: SELECT * FROM table_8
+- name: step_3
+  protocol: database
+  mock:
+    response:
+      status: 403
+      latency: 10ms
+  query: SELECT * FROM table_3
+- name: step_4
+  protocol: database
+  mock:
+    response:
+      status: 502
+      latency: 50ms
+  query: SELECT * FROM table_3
+- name: step_5
+  protocol: http
+  mock:
+    response:
+      status: 503
+      latency: 200ms
+  wait_for:
+  - step_0
+  endpoint: /api/v1/resource/639
+  method: POST
+- name: step_6
+  protocol: database
+  mock:
+    response:
+      status: 202
+      latency: 10ms
+  query: SELECT * FROM table_5
+- name: step_7
+  protocol: http
+  mock:
+    response:
+      status: 202
+      latency: 200ms
+  endpoint: /api/v1/resource/103
+  method: PUT

@@ -1,0 +1,82 @@
+test: infra.health.mock.validate_http_mock200_database_78
+description: Validating http_mock200_database behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: database
+  mock:
+    response:
+      status: 200
+      latency: ${$random.int(10,100)}ms
+  query: SELECT * FROM table_6
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 401
+      latency: 100ms
+  query: SELECT * FROM table_8
+- name: step_2
+  protocol: http
+  mock:
+    response:
+      status: 401
+      latency: 100ms
+  endpoint: /api/v1/resource/959
+  method: GET
+- name: step_3
+  protocol: database
+  mock:
+    response:
+      status: 204
+      latency: 10ms
+  query: SELECT * FROM table_7
+- name: step_4
+  protocol: database
+  mock:
+    response:
+      status: 202
+      latency: 50ms
+  query: SELECT * FROM table_1
+- name: step_5
+  protocol: database
+  mock:
+    response:
+      status: 400
+      latency: 50ms
+  query: SELECT * FROM table_2
+- name: step_6
+  protocol: kafka
+  mock:
+    response:
+      status: 204
+      latency: 100ms
+  wait_for:
+  - step_4
+  topic: events.46
+- name: step_7
+  protocol: database
+  mock:
+    response:
+      status: 202
+      latency: 1s
+  wait_for:
+  - step_3
+  query: SELECT * FROM table_8
+- name: step_8
+  protocol: http
+  mock:
+    response:
+      status: 400
+      latency: 100ms
+  endpoint: /api/v1/resource/504
+  method: POST
+- name: step_9
+  protocol: database
+  mock:
+    response:
+      status: 204
+      latency: 200ms
+  query: SELECT * FROM table_1

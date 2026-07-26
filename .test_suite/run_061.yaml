@@ -1,0 +1,22 @@
+test: infra.health.mock.validate_async_http_mock202_61
+description: Validating async_http_mock202 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: http
+  mock:
+    response:
+      status: 403
+      latency: 50ms
+  async: true
+  endpoint: /api/v1/resource/850
+  method: PUT
+- name: step_1
+  protocol: kafka
+  mock:
+    response:
+      status: 202
+      latency: 10ms
+  topic: events.84

@@ -311,11 +311,18 @@ POST   /api/v1/plugins/register    # Register custom plugin
 
 #### CLI
 ```bash
+# Start the persistent Evento Server (API, UI, Engine, MCP)
+evento server --port 8080
+
+# Execute a test locally (convenience wrapper)
 evento run test.yaml
-evento status {run-id}
-evento results {run-id} --format json|yaml|html
-evento schedule test.yaml --cron "0 2 * * *"
-evento insights {run-id}
+
+# External Client (evento-client) interacting with server
+evento-client run --server http://localhost:8080 --plan test.yaml
+evento-client status --server http://localhost:8080 --run-id {uuid}
+evento-client list --server http://localhost:8080
+evento-client results {run-id} --format json|yaml|html
+evento-client schedule test.yaml --cron "0 2 * * *"
 ```
 
 #### SDK (for AI Agents)
@@ -548,7 +555,7 @@ Because mocks can be stateful (e.g. sequences of responses, failure injection tr
 
 ```
 ┌─────────────────────────────────────┐
-│      evento (Single Process)        │
+│    evento server (Single Process)   │
 │                                      │
 │  ┌──────────┐    ┌──────────────┐  │
 │  │ Manager  │◄───│ Worker Pool  │  │
@@ -556,11 +563,11 @@ Because mocks can be stateful (e.g. sequences of responses, failure injection tr
 │  └────┬─────┘    └──────────────┘  │
 │       │                              │
 │  ┌────▼─────┐    ┌──────────────┐  │
-│  │ DuckDB   │    │    Sled      │  │
+│  │ Postgres │    │    Sled      │  │
 │  │ Metrics  │    │    State     │  │
 │  └──────────┘    └──────────────┘  │
 │                                      │
-│  API: localhost:8080                │
+│  API/UI/MCP: localhost:8080         │
 └─────────────────────────────────────┘
 ```
 

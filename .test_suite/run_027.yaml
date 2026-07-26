@@ -1,0 +1,89 @@
+test: sales.buyflow.mock.validate_async_http_mock202_27
+description: Validating async_http_mock202 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: http
+  mock:
+    response:
+      status: 400
+      latency: 1s
+  endpoint: /api/v1/resource/162
+  method: POST
+- name: step_1
+  protocol: http
+  mock:
+    response:
+      status: 400
+      latency: 1s
+  wait_for:
+  - step_0
+  endpoint: /api/v1/resource/837
+  method: DELETE
+- name: step_2
+  protocol: http
+  mock:
+    response:
+      status: 204
+      latency: 200ms
+  async: true
+  endpoint: /api/v1/resource/925
+  method: DELETE
+- name: step_3
+  protocol: http
+  mock:
+    response:
+      status: 202
+      latency: 500ms
+  wait_for:
+  - step_0
+  endpoint: /api/v1/resource/191
+  method: DELETE
+- name: step_4
+  protocol: database
+  mock:
+    response:
+      status: 400
+      latency: 100ms
+  query: SELECT * FROM table_10
+- name: step_5
+  protocol: http
+  mock:
+    response:
+      status: 200
+      latency: 50ms
+  wait_for:
+  - step_3
+  endpoint: /api/v1/resource/846
+  method: PUT
+- name: step_6
+  protocol: database
+  mock:
+    response:
+      status: 401
+      latency: 1s
+  query: SELECT * FROM table_2
+- name: step_7
+  protocol: database
+  mock:
+    response:
+      status: 201
+      latency: 50ms
+  query: SELECT * FROM table_8
+- name: step_8
+  protocol: http
+  mock:
+    response:
+      status: 502
+      latency: 50ms
+  endpoint: /api/v1/resource/610
+  method: POST
+- name: step_9
+  protocol: database
+  mock:
+    response:
+      status: 201
+      latency: 100ms
+  query: SELECT * FROM table_10

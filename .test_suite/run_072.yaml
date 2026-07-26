@@ -1,0 +1,33 @@
+test: analytics.tracking.mock.validate_http_mock403_sync_72
+description: Validating http_mock403_sync behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: http
+  mock:
+    response:
+      status: 403
+      latency: 200ms
+  endpoint: /api/v1/resource/52
+  method: POST
+- name: step_1
+  protocol: http
+  mock:
+    response:
+      status: 502
+      latency: ${$random.int(10,100)}ms
+  wait_for:
+  - step_0
+  endpoint: /api/v1/resource/746
+  method: PUT
+- name: step_2
+  protocol: kafka
+  mock:
+    response:
+      status: 400
+      latency: 200ms
+  wait_for:
+  - step_0
+  topic: events.92

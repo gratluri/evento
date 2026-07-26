@@ -1,0 +1,13 @@
+test: infra.health.mock.validate_kafka_mock200_73
+description: Validating kafka_mock200 behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: kafka
+  mock:
+    response:
+      status: 200
+      latency: 100ms
+  topic: events.76

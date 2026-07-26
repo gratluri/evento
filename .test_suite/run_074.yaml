@@ -1,0 +1,88 @@
+test: analytics.tracking.mock.validate_async_mock503_http_74
+description: Validating async_mock503_http behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: http
+  mock:
+    response:
+      status: 403
+      latency: 50ms
+  endpoint: /api/v1/resource/678
+  method: PUT
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 201
+      latency: 100ms
+  query: SELECT * FROM table_2
+- name: step_2
+  protocol: kafka
+  mock:
+    response:
+      status: 403
+      latency: 1s
+  wait_for:
+  - step_0
+  topic: events.75
+- name: step_3
+  protocol: http
+  mock:
+    response:
+      status: 204
+      latency: ${$random.int(10,100)}ms
+  wait_for:
+  - step_0
+  endpoint: /api/v1/resource/226
+  method: PUT
+- name: step_4
+  protocol: http
+  mock:
+    response:
+      status: 204
+      latency: ${$random.int(10,100)}ms
+  endpoint: /api/v1/resource/164
+  method: DELETE
+- name: step_5
+  protocol: database
+  mock:
+    response:
+      status: 200
+      latency: ${$random.int(10,100)}ms
+  async: true
+  wait_for:
+  - step_4
+  query: SELECT * FROM table_4
+- name: step_6
+  protocol: kafka
+  mock:
+    response:
+      status: 503
+      latency: 500ms
+  topic: events.56
+- name: step_7
+  protocol: database
+  mock:
+    response:
+      status: 400
+      latency: 100ms
+  query: SELECT * FROM table_5
+- name: step_8
+  protocol: database
+  mock:
+    response:
+      status: 204
+      latency: 50ms
+  async: true
+  query: SELECT * FROM table_2
+- name: step_9
+  protocol: http
+  mock:
+    response:
+      status: 502
+      latency: ${$random.int(10,100)}ms
+  endpoint: /api/v1/resource/44
+  method: PUT

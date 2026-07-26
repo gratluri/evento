@@ -1,0 +1,39 @@
+test: analytics.tracking.mock.validate_async_database_sync_96
+description: Validating async_database_sync behaviors at scale
+config:
+  virtual_users: 1
+  mock_strategy: required
+scenario:
+- name: step_0
+  protocol: kafka
+  mock:
+    response:
+      status: 404
+      latency: 1s
+  topic: events.70
+- name: step_1
+  protocol: database
+  mock:
+    response:
+      status: 401
+      latency: 500ms
+  async: true
+  query: SELECT * FROM table_5
+- name: step_2
+  protocol: database
+  mock:
+    response:
+      status: 404
+      latency: 10ms
+  wait_for:
+  - step_0
+  query: SELECT * FROM table_9
+- name: step_3
+  protocol: database
+  mock:
+    response:
+      status: 500
+      latency: ${$random.int(10,100)}ms
+  wait_for:
+  - step_0
+  query: SELECT * FROM table_2

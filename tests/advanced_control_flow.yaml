@@ -1,0 +1,49 @@
+test: demo.advanced_control_flow
+description: Tests Phase 3.2 advanced features
+
+config:
+  virtual_users: 1
+  mock_strategy: required
+
+scenario:
+  - name: step1
+    protocol: http
+    endpoint: /api/flaky
+    method: GET
+    retry:
+      max_attempts: 3
+      delay: "10ms"
+    mock:
+      behavior:
+        error_rate: 1.0 # Guarantee failure so we can test retry
+        error_response:
+          status: 500
+      response:
+        status: 200
+    on_failure: fallback_step
+    
+  - name: step2
+    description: "This should be skipped because step1 will fail and GOTO fallback_step"
+    protocol: http
+    endpoint: /api/should-skip
+    mock:
+      response:
+        status: 200
+
+  - name: fallback_step
+    protocol: http
+    endpoint: /api/fallback
+    mock:
+      response:
+        status: 200
+        
+  - name: loop_step
+    loop:
+      count: 2
+    do:
+      - name: inner_loop_step
+        protocol: http
+        endpoint: /api/loop-item
+        mock:
+          response:
+            status: 200

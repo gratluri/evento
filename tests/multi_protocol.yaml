@@ -1,0 +1,43 @@
+test: demo.multi_protocol
+description: Validate that Kafka and Postgres execution works seamlessly alongside HTTP.
+
+config:
+  mock_strategy: disabled # we want real protocols to fail/execute natively
+  virtual_users: 1
+
+scenario:
+  - name: step_http_mock
+    protocol: http
+    endpoint: "http://localhost:8082/post"
+    method: POST
+    body:
+      status: "testing"
+
+  - name: step_https_ssl
+    protocol: http
+    endpoint: "https://httpbin.org/status/200"
+    method: GET
+
+  - name: step_kafka_publish
+    protocol: kafka
+    connection: "localhost:9092"
+    headers:
+      topic: "user-events"
+    body: >
+      {"event": "signup", "user_id": 42}
+    retry:
+      max_attempts: 1
+
+  - name: step_postgres_insert
+    protocol: postgres
+    connection: "postgres://user:pass@localhost:5432/evento_db"
+    query: "INSERT INTO events (user_id, type) VALUES (42, 'signup')"
+    retry:
+      max_attempts: 1
+
+  - name: step_cassandra_insert
+    protocol: cassandra
+    connection: "localhost:9042"
+    query: "INSERT INTO mykeyspace.users (user_id, name) VALUES (42, 'test')"
+    retry:
+      max_attempts: 1

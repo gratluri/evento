@@ -27,7 +27,8 @@ pub struct SystemMetricSnapshot {
     pub memory_total: u64,
     pub network_rx: u64,
     pub network_tx: u64,
-    pub active_tasks: usize,
+    pub tasks_created: usize,
+    pub tasks_completed: usize,
 }
 
 pub struct AppState {
@@ -149,13 +150,15 @@ pub async fn start_admin_server(port: u16, config: StorageConfig) -> Result<()> 
                 network_tx += data.transmitted();
             }
             
-            // Calculate truly active tasks (tests currently in "Running" state)
-            let mut active_tasks = 0;
+            // Calculate tasks created and completed
+            let mut tasks_created = 0;
+            let mut tasks_completed = 0;
             if let Ok(runs) = monitor_store.list_runs() {
+                tasks_created = runs.len();
                 for run_id in runs {
                     if let Ok(Some(state)) = monitor_store.get_run_state(&run_id) {
-                        if state.contains("Running") {
-                            active_tasks += 1;
+                        if state.contains("Completed") || state.contains("Failed") {
+                            tasks_completed += 1;
                         }
                     }
                 }
@@ -172,7 +175,8 @@ pub async fn start_admin_server(port: u16, config: StorageConfig) -> Result<()> 
                 memory_total,
                 network_rx,
                 network_tx,
-                active_tasks,
+                tasks_created,
+                tasks_completed,
             });
         }
     });

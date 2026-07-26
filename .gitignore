@@ -1,2 +1,4 @@
 /target
 /.evento_test_data
+*.log
+scratch_*

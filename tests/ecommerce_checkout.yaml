@@ -1,0 +1,48 @@
+test: demo.ecommerce_checkout
+description: E-Commerce Checkout Flow across multiple protocols
+
+config:
+  virtual_users: 1
+  mock_strategy: disabled
+
+scenario:
+  - name: step1_auth
+    protocol: http
+    endpoint: "http://localhost:8082/post"
+    method: POST
+    headers:
+      Content-Type: application/json
+    body:
+      user_id: "user_123"
+      access_token: "tok_abc123"
+      trace_id: "trace_xyz789"
+    extract:
+      user_id: "json.json.user_id"
+      access_token: "json.json.access_token"
+      trace_id: "json.json.trace_id"
+      
+  - name: step2_inventory_check
+    protocol: postgres
+    endpoint: "postgres://user:pass@localhost:5432/evento_db"
+    method: QUERY
+    body: "SELECT item_id FROM inventory WHERE hold_user_id = '${user_id}'"
+    extract:
+      order_id: "json.rows.0.item_id"
+
+  - name: step3_publish_order
+    protocol: kafka
+    endpoint: "localhost:9092"
+    headers:
+      topic: "orders"
+    body:
+      event: "order_placed"
+      user: "${user_id}"
+      token: "${access_token}"
+      trace: "${trace_id}"
+      order: "${order_id}"
+
+  - name: step4_audit_log
+    protocol: cassandra
+    endpoint: "localhost:9042"
+    method: QUERY
+    body: "INSERT INTO mykeyspace.audit_logs (user_id, trace_id, order_id) VALUES ('${user_id}', '${trace_id}', '${order_id}')"

@@ -165,19 +165,20 @@
             cursor: pointer;
         }
 
-        /* Test Runs Layout */
         .runs-container {
             display: flex;
             gap: 2rem;
             align-items: flex-start;
+            flex-wrap: wrap;
         }
         .runs-list {
-            flex: 2;
+            flex: 1 1 50%;
         }
         .run-details {
-            flex: 1;
+            flex: 1 1 40%;
             position: sticky;
             top: 2rem;
+            min-width: 450px;
         }
 
         /* Instance Progress Bar */
@@ -281,6 +282,10 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        .btn.active-run {
+            background: var(--accent-red) !important;
+            border-color: var(--accent-red) !important;
+        }
         
         pre {
             background: rgba(0,0,0,0.3);
@@ -377,6 +382,7 @@
                                 <th>Run ID</th>
                                 <th>Status</th>
                                 <th>Virtual Users</th>
+                                <th>Details</th>
                             </tr>
                         </thead>
                         <tbody id="runs-table-body">
@@ -403,7 +409,12 @@
                     </table>
 
                     <div id="timeline-container" style="display: none; margin-top: 1.5rem;">
-                        <h4>VU <span id="timeline-vuid"></span> Timeline</h4>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h4>VU <span id="timeline-vuid"></span> Timeline</h4>
+                            <label style="font-size: 0.85rem; cursor: pointer;">
+                                <input type="checkbox" id="show-context-flag"> Show Context
+                            </label>
+                        </div>
                         <ul class="timeline" id="timeline-list">
                         </ul>
                     </div>
@@ -462,6 +473,7 @@
         let filteredRuns = [];
         let currentPage = 1;
         const PAGE_SIZE = 15;
+        let activeRunId = null;
 
         async function fetchRuns() {
             try {
@@ -567,17 +579,34 @@
 
             for (const runData of pageData) {
                 const tr = document.createElement('tr');
-                tr.className = 'clickable';
-                tr.onclick = () => loadRunDetailsData(runData);
                 
                 const id = runData.run_id;
+                const btnId = 'btn-run-' + id;
+                const activeClass = (activeRunId === id) ? 'active-run' : '';
                 tr.innerHTML = `
                     <td>${runData.plan?.namespace || 'unknown'}</td>
                     <td style="font-family: monospace;">${id.substring(0,8)}...</td>
                     <td><span class="status-badge" style="display:inline-block">${runData.state}</span></td>
                     <td>${runData.plan?.config?.virtual_users || 0}</td>
+                    <td><button class="btn ${activeClass}" id="${btnId}" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;" title="View Details">🔍</button></td>
                 `;
                 tbody.appendChild(tr);
+                document.getElementById(btnId).onclick = (e) => {
+                    e.stopPropagation();
+                    if (activeRunId === id) {
+                        activeRunId = null;
+                        document.getElementById(btnId).classList.remove('active-run');
+                        document.getElementById('run-inspector').style.display = 'none';
+                    } else {
+                        if (activeRunId) {
+                            const oldBtn = document.getElementById('btn-run-' + activeRunId);
+                            if (oldBtn) oldBtn.classList.remove('active-run');
+                        }
+                        activeRunId = id;
+                        document.getElementById(btnId).classList.add('active-run');
+                        loadRunDetailsData(runData);
+                    }
+                };
             }
         }
 
@@ -629,41 +658,62 @@
             document.getElementById('timeline-vuid').innerText = vuId;
             
             const list = document.getElementById('timeline-list');
-            list.innerHTML = '';
+            list.innerHTML = '<li class="timeline-step">Loading telemetry...</li>';
             
-            if (plan && plan.tasks) {
-                // Base time from submission
-                let baseTime = new Date(submittedAt || Date.now());
+            try {
+                const res = await fetch('/api/v1/tests/runs/' + runId + '/results');
+                if (!res.ok) throw new Error("Failed to load results");
+                const results = await res.json();
                 
-                for (let i = 0; i < plan.tasks.length; i++) {
-                    const task = plan.tasks[i];
+                list.innerHTML = '';
+                
+                const vuResults = results.filter(r => r.vu_id === vuId);
+                vuResults.sort((a, b) => new Date(a.executed_at) - new Date(b.executed_at));
+                
+                if (vuResults.length === 0) {
+                    list.innerHTML = '<li class="timeline-step">No steps executed yet.</li>';
+                    return;
+                }
+                
+                for (let i = 0; i < vuResults.length; i++) {
+                    const r = vuResults[i];
                     
-                    // Simulate execution time advancing for each step
-                    baseTime.setMilliseconds(baseTime.getMilliseconds() + Math.floor(Math.random() * 500) + 50);
-                    const stepTimeStr = baseTime.toISOString().split('T')[1].split('.')[0] + '.' + baseTime.getMilliseconds() + 'Z';
-                    
-                    // Simulate failure if mock status is >= 400
-                    let isFailed = false;
-                    let statusCode = 200;
-                    if (task.step_definition && task.step_definition.mock && task.step_definition.mock.response && task.step_definition.mock.response.status) {
-                        statusCode = task.step_definition.mock.response.status;
-                        if (statusCode >= 400) {
-                            isFailed = true;
-                        }
-                    }
-                    
+                    const isFailed = typeof r.status === 'object' && r.status.Failed;
                     const stateClass = isFailed ? 'failed' : 'success';
                     const stateText = isFailed ? 'Failed' : 'Success';
-                    const metaText = isFailed ? `Mocked failure (Status ${statusCode})` : `Mock executed (Status ${statusCode})`;
+                    const metaText = isFailed ? `Error: ${r.status.Failed}` : `Latency: ${r.latency_ms}ms`;
                     
                     const li = document.createElement('li');
-                    li.className = `timeline-step ${stateClass}`;
+                    li.className = `timeline-step ${stateClass} clickable`;
+                    
+                    const ctxBefore = JSON.stringify(r.context_before, null, 2);
+                    const ctxAfter = JSON.stringify(r.context_after, null, 2);
+                    
+                    const stepName = (plan && plan.tasks) 
+                        ? (plan.tasks.find(t => t.task_id === r.task_id)?.step_name || r.task_id)
+                        : r.task_id;
+                        
                     li.innerHTML = `
-                        <div class="step-name">${task.step_name} <span class="status-badge" style="display:inline-block; margin-left: 10px; background: ${isFailed ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)'}; color: ${isFailed ? 'var(--accent-red)' : 'var(--accent-green)'};">${stateText}</span></div>
-                        <div class="step-meta">Time: ${stepTimeStr} | ${metaText}</div>
+                        <div class="step-name">${stepName} <span class="status-badge" style="display:inline-block; margin-left: 10px; background: ${isFailed ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)'}; color: ${isFailed ? 'var(--accent-red)' : 'var(--accent-green)'};">${stateText}</span></div>
+                        <div class="step-meta">Time: ${new Date(r.executed_at).toLocaleTimeString()} | ${metaText}</div>
+                        <div class="step-context" style="display: none; margin-top: 10px; font-size: 0.75rem;">
+                            <strong>Context Before:</strong><pre style="margin-top: 5px; margin-bottom: 10px;">${ctxBefore}</pre>
+                            <strong>Context After:</strong><pre style="margin-top: 5px;">${ctxAfter}</pre>
+                        </div>
                     `;
+                    
+                    li.onclick = function(e) {
+                        const showCtx = document.getElementById('show-context-flag').checked;
+                        if (showCtx) {
+                            const ctxDiv = this.querySelector('.step-context');
+                            ctxDiv.style.display = ctxDiv.style.display === 'none' ? 'block' : 'none';
+                        }
+                    };
+                    
                     list.appendChild(li);
                 }
+            } catch (e) {
+                list.innerHTML = '<li class="timeline-step failed">Error loading telemetry</li>';
             }
         }
 
@@ -708,8 +758,14 @@
 
         const tasksChart = new Chart(document.getElementById('tasksChart'), {
             type: 'line',
-            data: { labels: [], datasets: [{ label: 'Active Tasks', data: [], borderColor: '#f59e0b', tension: 0.2, borderWidth: 2 }] },
-            options: { ...commonOptions, plugins: { title: { display: true, text: 'Active Evento Tasks' } } }
+            data: { 
+                labels: [], 
+                datasets: [
+                    { label: 'Created', data: [], borderColor: '#3b82f6', tension: 0.2, borderWidth: 2 },
+                    { label: 'Completed', data: [], borderColor: '#10b981', tension: 0.2, borderWidth: 2 }
+                ] 
+            },
+            options: { ...commonOptions, plugins: { title: { display: true, text: 'Test Runs Lifecycle' }, legend: { display: true } } }
         });
 
         async function fetchSystemMetrics() {
@@ -734,12 +790,13 @@
                         netTxRate.push(0);
                     }
                 }
-                const tasks = data.map(d => d.active_tasks);
+                const tasksCreated = data.map(d => d.tasks_created);
+                const tasksCompleted = data.map(d => d.tasks_completed);
 
                 cpuChart.data.labels = labels; cpuChart.data.datasets[0].data = cpu; cpuChart.update();
                 memChart.data.labels = labels; memChart.data.datasets[0].data = mem; memChart.update();
                 netChart.data.labels = labels; netChart.data.datasets[0].data = netRxRate; netChart.data.datasets[1].data = netTxRate; netChart.update();
-                tasksChart.data.labels = labels; tasksChart.data.datasets[0].data = tasks; tasksChart.update();
+                tasksChart.data.labels = labels; tasksChart.data.datasets[0].data = tasksCreated; tasksChart.data.datasets[1].data = tasksCompleted; tasksChart.update();
 
             } catch (err) {
                 console.error('Failed to fetch metrics', err);

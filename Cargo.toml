@@ -11,6 +11,10 @@ path = "src/main.rs"
 name = "evento-client"
 path = "src/bin/evento_client.rs"
 
+[[bin]]
+name = "debug_parse"
+path = "src/bin/debug_parse.rs"
+
 [dependencies]
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -32,8 +36,10 @@ sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid"
 actix-web = "4.4"
 sysinfo = "0.30"
 
-reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.11", features = ["json", "rustls-tls", "cookies"] }
 rand = "0.10.2"
+rskafka = "0.5.0"
+scylla = "0.14"
 
 [dev-dependencies]
 tempfile = "3.8"

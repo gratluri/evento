@@ -31,11 +31,6 @@ impl Compiler {
         let mut previous_task_id: Option<String> = None;
 
         for step in &plan.scenario {
-            // Phase 2 MVP: Ensure protocol steps have a mock block
-            if step.protocol.is_some() && step.mock.is_none() {
-                bail!("Phase 2 requires mock-only execution. Step '{}' has a protocol but is missing a 'mock' block.", step.name);
-            }
-
             let task_id = Uuid::new_v4().to_string();
             step_to_task_id.insert(step.name.clone(), task_id.clone());
 

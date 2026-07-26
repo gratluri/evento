@@ -68,6 +68,8 @@ pub struct StepResult {
     pub status: StepStatus,
     pub latency_ms: u64,
     pub executed_at: DateTime<Utc>,
+    pub context_before: HashMap<String, String>,
+    pub context_after: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]

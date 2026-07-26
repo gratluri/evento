@@ -1,0 +1,38 @@
+test: demo.real_http_execution
+description: Tests Phase 4 Real Protocol Execution with Reqwest
+
+config:
+  virtual_users: 1
+  mock_strategy: disabled # Ensure we hit the real network
+
+scenario:
+  - name: step1_login
+    protocol: http
+    endpoint: https://httpbin.org/post
+    method: POST
+    headers:
+      Content-Type: application/json
+    body:
+      user_id: "demo_user"
+      secret_token: "super_secret_123"
+    extract:
+      # httpbin reflects the JSON back in the `.json` property
+      extracted_token: "json.json.secret_token"
+    
+  - name: step2_fetch_data
+    protocol: http
+    endpoint: "https://httpbin.org/anything?user=${extracted_token}"
+    method: GET
+    headers:
+      X-Extracted-Token: "${extracted_token}"
+    
+  - name: step3_missing_protocol
+    protocol: custom_db
+    endpoint: localhost:5432
+    # Should fail because custom_db protocol executor is not implemented yet
+    on_failure: fallback_step
+    
+  - name: fallback_step
+    protocol: http
+    endpoint: https://httpbin.org/status/200
+    method: GET

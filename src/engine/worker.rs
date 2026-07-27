@@ -8,16 +8,28 @@ use std::sync::Arc;
 use chrono::Utc;
 use tokio::time::{sleep, Duration};
 
+pub fn parse_duration(s: &str) -> Option<Duration> {
+    if let Some(ms_str) = s.strip_suffix("ms") {
+        ms_str.parse::<u64>().ok().map(Duration::from_millis)
+    } else if let Some(s_str) = s.strip_suffix("s") {
+        s_str.parse::<u64>().ok().map(Duration::from_secs)
+    } else if let Some(m_str) = s.strip_suffix("m") {
+        m_str.parse::<u64>().ok().map(|m| Duration::from_secs(m * 60))
+    } else {
+        None
+    }
+}
 
 pub struct VuWorker {
     pub vu_id: u32,
     pub plan: Arc<ExecutionPlan>,
     pub store: Arc<SledStore>,
+    pub async_tasks: std::collections::HashMap<String, tokio::task::JoinHandle<()>>,
 }
 
 impl VuWorker {
     pub fn new(vu_id: u32, plan: Arc<ExecutionPlan>, store: Arc<SledStore>) -> Self {
-        Self { vu_id, plan, store }
+        Self { vu_id, plan, store, async_tasks: std::collections::HashMap::new() }
     }
 
     pub async fn run(&mut self) -> Result<()> {
@@ -36,7 +48,32 @@ impl VuWorker {
 
             let task = &self.plan.tasks[current_idx];
             
-            // Execute the step (could be a simple step, or a loop)
+            // Handle wait_for barrier
+            if let Some(wait_list) = &task.step_definition.wait_for {
+                for wait_step in wait_list {
+                    if let Some(handle) = self.async_tasks.remove(wait_step) {
+                        let _ = handle.await;
+                    }
+                }
+            }
+
+            // Handle async execution (fire-and-forget)
+            if task.step_definition.r#async.unwrap_or(false) {
+                let task_clone = task.clone();
+                let mut ctx_clone = context.clone();
+                // Create a clone of VuWorker that doesn't own any async tasks to prevent nested issues
+                let worker_clone = VuWorker::new(self.vu_id, self.plan.clone(), self.store.clone());
+                
+                let handle = tokio::task::spawn(async move {
+                    let _ = worker_clone.execute_task(&task_clone, &mut ctx_clone).await;
+                });
+                
+                self.async_tasks.insert(task.step_name.clone(), handle);
+                current_idx += 1;
+                continue;
+            }
+
+            // Execute the step sequentially
             let status = self.execute_task(task, &mut context).await?;
 
             if let StepStatus::Failed(_) = status {
@@ -69,27 +106,70 @@ impl VuWorker {
         
         // Handle Loop Execution
         if let Some(loop_config) = &step_def.loop_config {
-            let count = match &loop_config.count {
-                Some(serde_yaml::Value::Number(n)) => n.as_u64().unwrap_or(0),
-                _ => 0, // Fallback
-            };
+            // Check for over/from collection iteration
+            if let (Some(over_var), Some(from_expr)) = (&loop_config.over, &loop_config.from) {
+                let resolved_from = ctx.interpolate(from_expr);
+                if let Ok(serde_json::Value::Array(items)) = serde_json::from_str(&resolved_from) {
+                    for (iter, item) in items.iter().enumerate() {
+                        // Inject item into context
+                        let item_str = match item {
+                            serde_json::Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        };
+                        ctx.set(over_var.clone(), item_str);
+                        
+                        if let Some(do_block) = &step_def.do_steps {
+                            self.execute_do_block(do_block, &task.task_id, iter as u64, ctx).await?;
+                        }
+                    }
+                }
+            } else {
+                // Check for numeric count iteration
+                let count = match &loop_config.count {
+                    Some(serde_yaml::Value::Number(n)) => n.as_u64().unwrap_or(0),
+                    Some(serde_yaml::Value::String(s)) => {
+                        let resolved = ctx.interpolate(s);
+                        resolved.parse::<u64>().unwrap_or(0)
+                    },
+                    _ => 0,
+                };
 
-            if count > 0 {
-                for iter in 0..count {
-                    if let Some(do_block) = &step_def.do_steps {
-                        self.execute_do_block(do_block, &task.task_id, iter, ctx).await?;
+                if count > 0 {
+                    for iter in 0..count {
+                        if let Some(do_block) = &step_def.do_steps {
+                            self.execute_do_block(do_block, &task.task_id, iter, ctx).await?;
+                        }
                     }
                 }
             }
             return Ok(StepStatus::Success);
         }
 
-        // Handle Retry Logic
+        // Handle Retry and Within Logic
         let max_attempts = step_def.retry.as_ref().map(|r| r.max_attempts).unwrap_or(1);
+        let within_duration = step_def.within.as_ref().and_then(|w| {
+            match w {
+                crate::dsl::dsl_parser::WithinConfig::Duration(d) => Some(d),
+                crate::dsl::dsl_parser::WithinConfig::Structured(s) => Some(&s.duration),
+            }
+        }).and_then(|d| parse_duration(d));
+
+        let step_timeout = step_def.timeout.as_deref().and_then(parse_duration).unwrap_or(Duration::from_secs(10));
+
         let mut attempt = 1;
         let mut final_status = StepStatus::Success;
+        let loop_start_time = std::time::Instant::now();
 
-        while attempt <= max_attempts {
+        loop {
+            if attempt > max_attempts && within_duration.is_none() {
+                break;
+            }
+            if let Some(limit) = within_duration {
+                if loop_start_time.elapsed() >= limit {
+                    final_status = StepStatus::Failed("Within duration exceeded".to_string());
+                    break;
+                }
+            }
             let start = Utc::now();
             let context_before = ctx.variables.clone();
             let mut status = StepStatus::Success;
@@ -98,31 +178,41 @@ impl VuWorker {
             let mock_strategy = self.plan.config.mock_strategy.as_str();
 
             let mut executed_protocol = false;
+            let has_protocol = step_def.protocol.is_some();
+            let has_script = step_def.script.is_some();
+            let is_script_protocol = step_def.protocol.as_deref() == Some("script");
+            let is_script_only = (!has_protocol && has_script) || is_script_protocol;
+            let has_protocol_or_script = has_protocol || has_script;
             
             // Phase 4: Real Protocol Execution
-            if (mock_strategy == "auto" || mock_strategy == "disabled") && step_def.protocol.is_some() {
-                let protocol = step_def.protocol.as_ref().unwrap();
-                executed_protocol = true;
-                
-                let execution_result = match protocol.as_str() {
-                    "http" => HttpExecutor.execute(step_def, ctx).await,
-                    "postgres" => PostgresExecutor.execute(step_def, ctx).await,
-                    "cassandra" => CassandraExecutor.execute(step_def, ctx).await,
-                    "kafka" | "eventhub" => KafkaExecutor.execute(step_def, ctx).await,
-                    _ => {
-                        executed_protocol = false;
-                        Err(anyhow::anyhow!("Unsupported protocol: {}", protocol))
-                    }
-                };
+            if (mock_strategy == "auto" || mock_strategy == "disabled" || is_script_only) && has_protocol_or_script {
+                let protocol_str = step_def.protocol.as_deref().unwrap_or("script");
+                let is_supported = matches!(protocol_str, "http" | "postgres" | "cassandra" | "kafka" | "eventhub" | "script");
+                executed_protocol = is_supported;
 
                 if executed_protocol {
-                    match execution_result {
-                        Ok(response) => {
+                    let execution_future = async {
+                        match protocol_str {
+                            "http" => crate::engine::protocol::HttpExecutor.execute(step_def, ctx).await,
+                            "postgres" => crate::engine::protocol::PostgresExecutor.execute(step_def, ctx).await,
+                            "cassandra" => crate::engine::protocol::CassandraExecutor.execute(step_def, ctx).await,
+                            "kafka" | "eventhub" => crate::engine::protocol::KafkaExecutor.execute(step_def, ctx).await,
+                            "script" => crate::engine::protocol::ScriptExecutor.execute(step_def, ctx).await,
+                            _ => unreachable!(),
+                        }
+                    };
+
+                    // Apply step timeout wrapper
+                    let timeout_result = tokio::time::timeout(step_timeout, execution_future).await;
+                    
+                    match timeout_result {
+                        Ok(Ok(response)) => {
                             if response.status_code >= 400 {
                                 status = StepStatus::Failed(format!("Protocol Error {}", response.status_code));
                             } else {
                                 status = StepStatus::Success;
-                                // Handle Extraction
+                                
+                                // Extract variables so they can be validated
                                 if let Some(extract_map) = &step_def.extract {
                                     for (var_name, extract_path) in extract_map {
                                         if let Some(extracted_val) = response.extract(extract_path) {
@@ -130,14 +220,27 @@ impl VuWorker {
                                         }
                                     }
                                 }
+
+                                // Evaluate validate block
+                                if let Some(validations) = &step_def.validate {
+                                    for rule in validations {
+                                        if !ctx.evaluate_boolean_rule(rule, &response) {
+                                            status = StepStatus::Failed(format!("Validation failed: {}", rule));
+                                            break;
+                                        }
+                                    }
+                                }
                             }
                         },
-                        Err(e) => {
+                        Ok(Err(e)) => {
                             status = StepStatus::Failed(e.to_string());
+                        },
+                        Err(_) => {
+                            status = StepStatus::Failed(format!("Step timeout of {:?} exceeded", step_timeout));
                         }
                     }
                 } else {
-                    status = StepStatus::Failed(format!("Unsupported protocol: {}", protocol));
+                    status = StepStatus::Failed(format!("Unsupported protocol: {}", protocol_str));
                 }
             }
 
@@ -195,7 +298,11 @@ impl VuWorker {
                         }
                     }
                 } else if !executed_protocol {
-                    status = StepStatus::Failed("No mock or protocol configuration found".to_string());
+                    if step_def.protocol.is_some() {
+                        status = StepStatus::Failed(format!("Mock strategy is '{}', but no mock configuration found for protocol", mock_strategy));
+                    } else {
+                        status = StepStatus::Failed("No mock or protocol configuration found".to_string());
+                    }
                 }
             }
 
@@ -223,20 +330,22 @@ impl VuWorker {
 
             if let StepStatus::Success = status {
                 break; // Succeeded, exit retry loop
-            } else if attempt < max_attempts {
-                // Sleep for retry delay
-                if let Some(retry) = &step_def.retry {
-                    if let Some(delay_str) = &retry.delay {
-                        if delay_str.ends_with("ms") {
-                            if let Ok(ms) = delay_str.trim_end_matches("ms").parse::<u64>() {
-                                sleep(Duration::from_millis(ms)).await;
-                            }
-                        } else if delay_str.ends_with("s") {
-                            if let Ok(secs) = delay_str.trim_end_matches("s").parse::<u64>() {
-                                sleep(Duration::from_secs(secs)).await;
-                            }
-                        }
-                    }
+            } else {
+                // Sleep for retry delay or within poll interval
+                let delay = if within_duration.is_some() {
+                    Duration::from_millis(500) // Poll interval for within
+                } else if let Some(retry) = &step_def.retry {
+                    retry.delay.as_deref().and_then(parse_duration).unwrap_or(Duration::from_millis(1000))
+                } else {
+                    Duration::from_millis(0)
+                };
+                
+                if delay.as_millis() > 0 {
+                    sleep(delay).await;
+                }
+                
+                if within_duration.is_none() && attempt >= max_attempts {
+                    break;
                 }
             }
             attempt += 1;

@@ -1,0 +1,36 @@
+test: demo.scripting.rhai
+description: "Demonstrate Rhai embedded scripting for payload transformation"
+config:
+  virtual_users: 1
+  duration_ms: 10000
+
+scenario:
+  - name: setup_variables
+    protocol: http
+    endpoint: http://localhost:8081/api/v1/mock/status/200
+    method: GET
+    # Setup some dummy variables to simulate extraction from a previous request
+    extract:
+      price: json.metadata.price
+      user: json.metadata.user_id
+    script: |
+      context.price = "150";
+      context.user = "demo_user";
+
+  - name: transform_payload
+    runtime: rhai
+    script: |
+      // Rhai uses context map
+      let original_price = parse_int(context.price);
+      let discounted_price = original_price * 0.9;
+      
+      context.discounted = discounted_price.to_string();
+      context.signature = context.user + "_" + context.price;
+
+  - name: verify_transformation
+    protocol: http
+    # Interpolating the newly computed variables from Rhai script
+    endpoint: "http://localhost:8081/api/v1/mock/status/200?price=${discounted}&sig=${signature}"
+    method: GET
+    validate:
+      - response.status_code == 200

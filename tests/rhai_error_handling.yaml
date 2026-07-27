@@ -1,0 +1,37 @@
+test: demo.scripting.errors
+description: "Demonstrate that script runtime exceptions trigger on_failure routing"
+config:
+  virtual_users: 1
+  duration_ms: 10000
+
+scenario:
+  - name: faulty_script
+    runtime: rhai
+    script: |
+      // Trying to parse a non-existent variable will throw an error
+      let original = parse_int(context.does_not_exist);
+      
+      // Or forcing an exception manually
+      // throw "Intentional script crash!";
+      
+      context.survived = "true";
+    on_failure: recovery_step
+    on_success: skip_step
+
+  - name: skip_step
+    protocol: http
+    endpoint: http://localhost:8081/api/v1/mock/status/200
+    method: GET
+    mock:
+      response:
+        status: 200
+
+  - name: recovery_step
+    protocol: http
+    endpoint: http://localhost:8081/api/v1/mock/status/200
+    method: GET
+    mock:
+      response:
+        status: 200
+    validate:
+      - response.status_code == 200

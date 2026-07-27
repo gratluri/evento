@@ -1,0 +1,20 @@
+test: demo.scripting.debug
+description: "Debug context variables"
+config:
+  virtual_users: 1
+  duration_ms: 10000
+
+scenario:
+  - name: debug_vars
+    protocol: script
+    script: |
+      context.my_var = "hello_world";
+      context.my_num = 42;
+
+  - name: print_vars
+    protocol: http
+    endpoint: "http://localhost:8081/api/v1/mock/status/200?var=${my_var}&num=${my_num}"
+    method: GET
+    mock:
+      response:
+        status: 200

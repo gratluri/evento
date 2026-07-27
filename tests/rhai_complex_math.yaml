@@ -1,0 +1,42 @@
+test: demo.scripting.complex_math
+description: "Demonstrate complex rhai logic including arrays and conditional logic"
+config:
+  virtual_users: 1
+  duration_ms: 10000
+
+scenario:
+  - name: init_data
+    protocol: script
+    script: |
+      context.base_score = "150";
+      context.multiplier = "2.5";
+      context.is_premium = "true";
+
+  - name: calculate_final_score
+    runtime: rhai
+    script: |
+      let base = parse_int(context.base_score);
+      let mult = parse_float(context.multiplier);
+      
+      let raw_score = to_float(base) * mult;
+      
+      if context.is_premium == "true" {
+          raw_score = raw_score + 50.0;
+      }
+      
+      // Calculate a pseudo-hash
+      let hash = (raw_score * 3.14).to_int();
+      
+      context.final_score = raw_score.to_string();
+      context.verification_hash = hash.to_string();
+
+  - name: verify_score
+    protocol: http
+    endpoint: "http://localhost:8081/api/v1/mock/status/200?score=${final_score}&hash=${verification_hash}"
+    method: GET
+    mock:
+      response:
+        status: 200
+        latency: 10ms
+    validate:
+      - response.status_code == 200

@@ -1,0 +1,27 @@
+test: demo.cfg.branching
+description: "Demonstrate on_success and on_failure branching"
+config:
+  virtual_users: 1
+  duration_ms: 10000
+
+scenario:
+  - name: intentional_failure_step
+    protocol: http
+    endpoint: http://localhost:8081/api/v1/mock/status/500
+    method: GET
+    validate:
+      - response.status_code == 200
+    on_failure: recovery_step
+    on_success: skip_step
+
+  - name: skip_step
+    protocol: http
+    endpoint: http://localhost:8081/api/v1/mock/status/200
+    method: GET
+
+  - name: recovery_step
+    protocol: http
+    endpoint: http://localhost:8081/api/v1/mock/status/200
+    method: GET
+    validate:
+      - response.status_code == 200

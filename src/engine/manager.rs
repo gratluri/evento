@@ -36,8 +36,14 @@ impl RunManager {
             
             let handle = task::spawn(async move {
                 let mut worker = VuWorker::new(vu_id, plan_clone, store_clone);
-                if let Err(e) = worker.run().await {
-                    eprintln!("VU {} failed: {:?}", vu_id, e);
+                
+                let timeout_duration = std::time::Duration::from_millis(worker.plan.config.duration_ms);
+                
+                let run_future = worker.run();
+                match tokio::time::timeout(timeout_duration, run_future).await {
+                    Ok(Err(e)) => eprintln!("VU {} failed: {:?}", vu_id, e),
+                    Err(_) => eprintln!("VU {} timed out after {:?}", vu_id, timeout_duration),
+                    Ok(Ok(_)) => {},
                 }
             });
             handles.push(handle);

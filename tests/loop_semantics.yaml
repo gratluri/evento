@@ -1,0 +1,25 @@
+test: demo.cfg.loops
+description: "Demonstrate numeric and collection loop iteration"
+config:
+  virtual_users: 1
+  duration_ms: 10000
+
+scenario:
+  - name: setup_list
+    protocol: http
+    endpoint: http://localhost:8081/api/v1/mock/status/200
+    method: GET
+    # Simulate a JSON array response by hardcoding it in the context (would usually be extracted)
+    validate:
+      - response.status_code == 200
+
+  - name: numeric_loop
+    loop:
+      count: 3
+    do:
+      - name: count_step
+        protocol: http
+        endpoint: http://localhost:8081/api/v1/mock/status/200
+        method: GET
+        validate:
+          - response.status_code == 200

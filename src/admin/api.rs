@@ -121,10 +121,36 @@ async fn get_metrics_history(data: web::Data<AppState>) -> impl Responder {
     HttpResponse::Ok().json(metrics_vec)
 }
 
+#[derive(Deserialize)]
+pub struct AsyncAuditRequest {
+    pub user_id: String,
+    pub trace_id: Option<String>,
+}
+
+#[post("/api/v1/demo/async-audit")]
+async fn demo_async_audit(req: web::Json<AsyncAuditRequest>) -> impl Responder {
+    let req = req.into_inner();
+    tokio::spawn(async move {
+        // Sleep for 3 seconds to simulate async processing delay
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        
+        // Write to Cassandra
+        let cassandra_url = std::env::var("CASSANDRA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
+        if let Ok(session) = scylla::SessionBuilder::new().known_node(cassandra_url).build().await {
+            let trace = req.trace_id.unwrap_or_else(|| "mock_trace".to_string());
+            let query = "INSERT INTO mykeyspace.audit_logs (user_id, action, timestamp, metadata, order_id) VALUES (?, ?, toTimestamp(now()), ?, ?)";
+            let _ = session.query_unpaged(query, (req.user_id, "async_audit_demo", format!("{{\"trace_id\": \"{}\"}}", trace), "demo_order_123")).await;
+        }
+    });
+    
+    HttpResponse::Accepted().body("Audit queued")
+}
+
 pub fn configure_api_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(submit_run)
        .service(list_runs)
        .service(get_run)
        .service(get_run_results)
-       .service(get_metrics_history);
+       .service(get_metrics_history)
+       .service(demo_async_audit);
 }

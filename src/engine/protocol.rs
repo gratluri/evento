@@ -285,3 +285,44 @@ impl ProtocolExecutor for CassandraExecutor {
         })
     }
 }
+
+pub struct ScriptExecutor;
+
+#[async_trait]
+impl ProtocolExecutor for ScriptExecutor {
+    async fn execute(&self, step: &Step, ctx: &mut VuContext) -> Result<ProtocolResponse> {
+        let script_content = step.script.as_deref().ok_or_else(|| anyhow::anyhow!("Script protocol requires 'script' field"))?;
+        
+        let engine = rhai::Engine::new();
+        
+        // Convert ctx.variables to a rhai::Map
+        let mut context_map = rhai::Map::new();
+        for (k, v) in &ctx.variables {
+            context_map.insert(k.clone().into(), rhai::Dynamic::from(v.clone()));
+        }
+
+        let mut scope = rhai::Scope::new();
+        scope.push("context", context_map);
+
+        let start = std::time::Instant::now();
+        engine.eval_with_scope::<()>(&mut scope, script_content)
+            .map_err(|e| anyhow::anyhow!("Script error: {}", e))?;
+        let latency_ms = start.elapsed().as_millis() as u64;
+
+        // Extract modified variables back to ctx
+        if let Some(modified_map) = scope.get_value::<rhai::Map>("context") {
+            for (k, v) in modified_map {
+                ctx.set(k.to_string(), v.to_string());
+            }
+        }
+
+        Ok(ProtocolResponse {
+            status_code: 200,
+            latency_ms,
+            headers: HashMap::new(),
+            body_json: None,
+            body_text: Some("Script executed successfully".to_string()),
+            body_bytes: None,
+        })
+    }
+}

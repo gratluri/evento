@@ -1,0 +1,35 @@
+test: demo.cfg.async_wait
+description: "Demonstrate async task spawning and wait_for barrier"
+config:
+  virtual_users: 1
+  duration_ms: 10000
+
+scenario:
+  - name: background_task_1
+    protocol: http
+    endpoint: http://localhost:8081/api/v1/mock/status/200
+    method: GET
+    async: true
+
+  - name: background_task_2
+    protocol: http
+    endpoint: http://localhost:8081/api/v1/mock/status/200
+    method: GET
+    async: true
+
+  - name: immediate_task
+    protocol: http
+    endpoint: http://localhost:8081/api/v1/mock/status/200
+    method: GET
+    validate:
+      - response.status_code == 200
+
+  - name: barrier_task
+    protocol: http
+    endpoint: http://localhost:8081/api/v1/mock/status/200
+    method: GET
+    wait_for:
+      - background_task_1
+      - background_task_2
+    validate:
+      - response.status_code == 200
